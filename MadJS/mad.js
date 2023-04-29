@@ -10,6 +10,8 @@ const active_cell = [0,0]; // will hold the row/col pair of currently selected c
 const valid_key_presses = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q']
 
 const queued_moves = []; // each entry will be an object containing the next queued move, the owner of the action, the action to perform, and the direction it is pointed
+
+let move_mode; //0 for normal/left click mode, 1 for move all/middle click mode, 2 for move half/right click mode
 class Cell
 {
     static width = 50;
@@ -35,7 +37,11 @@ class Cell
     draw_cell() {
         //First draw a grid around the cell
         if(this.row == active_cell[0] && this.col == active_cell[1]) {
-            this.context.strokeStyle = '#FF0000';
+            let stroke_color;
+            if (move_mode == 0) { this.context.strokeStyle = '#FFFFFF'; }
+            else if (move_mode == 1) { this.context.strokeStyle = '#FF0000'; }
+            else if (move_mode == 2) { this.context.strokeStyle = '#FFcc00'; }
+
             this.context.lineWidth = 5;
         }
         else {
@@ -109,8 +115,8 @@ class Cell
             x_dest=x_start+Cell.width/2;
             y_dest=y_start;
         } else 
-
-        this.context.strokeStyle = '#000000';
+        
+        this.context.strokeStyle = '#FFFFFF';
         this.context.strokeWidth = strokeWidth
         
         // Inspired by / adapted from https://stackoverflow.com/a/6333775 :
@@ -150,7 +156,7 @@ function update_game() {
 
     //Process the queue
     if (queued_moves.length > 0) {
-        let move;
+        let move, troops_to_move;
         move = queued_moves.shift();
         
         let cell_id_source, cell_id_dest;
@@ -159,20 +165,33 @@ function update_game() {
 
         // Only complete the move if the queuer owns the source cell
         if (cells[cell_id_source].owner == move.queuer) {
-            console.log(move)
+            // console.log(move);           
+            
+            if (move.action == 0) { //left click
+                troops_to_move =  cells[cell_id_source].troops - 1 ;
+            } else if (move.action == 1) { // middle click
+                troops_to_move =  cells[cell_id_source].troops;
+            } else { //right click
+                troops_to_move =  Math.floor(cells[cell_id_source].troops/2);
+            }                
             
             // If the queuer also owns the destination cell, stack their troops together
-            if(cells[cell_id_dest].owner == move.queuer) {
-                cells[cell_id_dest].troops += cells[cell_id_source].troops - 1
-                cells[cell_id_source].troops = 1
+            if (cells[cell_id_dest].owner == move.queuer) {
+                cells[cell_id_dest].troops += troops_to_move;
+                
             } else { // Otherwise invade the destination cell
-                cells[cell_id_dest].troops -= cells[cell_id_source].troops - 1
+                cells[cell_id_dest].troops -= troops_to_move
                 if (cells[cell_id_dest].troops < 0) {
-                    cells[cell_id_dest].troops *= -1 
-                    cells[cell_id_dest].owner = move.queuer
+                    cells[cell_id_dest].troops *= -1;
+                    cells[cell_id_dest].owner = move.queuer;
                 }
-                cells[cell_id_source].troops = 1                
             }
+
+            cells[cell_id_source].troops -= troops_to_move;
+            if (cells[cell_id_source].troops <= 0) { 
+                cells[cell_id_source].owner = null;
+            }
+
         } 
     }
 }
@@ -202,9 +221,7 @@ function create_board_cells(num_rows, num_cols) {
 }
 
 function render_board() {    
-    //context.fillStyle='#DDDDDD' // grey
-    context.fillStyle='#0E306C'  // High Tide Blue
-    
+    context.fillStyle='#0E306C'  // High Tide Blue '#DDDDDD' // grey
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
     for (let i = 0; i < cells.length; i++) {// Draw each cell on the canvas
@@ -212,9 +229,14 @@ function render_board() {
     }
 
     queued_moves.forEach(move => {
-        let id;
+        let id, color;
         id = move.row * num_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
-        cells[id].draw_arrow(move.dir);
+        
+        cells[id].draw_arrow(move.dir, color);
+        // if (move.action == 0) { color = '#FFcc00'; }
+        // else if (move.action == 1) { color = '#FF0000'; }
+        // else if (move.action == 2) { color = '#FFcc00'; }
+        // cells[id].draw_arrow(move.dir, color);
     }); 
 
     // display the turn number
@@ -222,7 +244,7 @@ function render_board() {
 }
 
 function init(){
-    console.log('Initializing a Game of Life instance')
+    console.log('Initializing a Madmirals instance')
     
     // Add event listener on keydown
     document.addEventListener('keydown', (event) => {
@@ -235,18 +257,38 @@ function init(){
     num_rows = 100 // canvas height must match rows*row_size
     num_cols = 100
     game_tick = 0
-    
+    move_mode = 1
     // Get a reference to the canvas
     canvas = document.getElementById('canvas');
     context = canvas.getContext('2d');
 
     canvas.height = Cell.height*num_rows // canvas width must match cols*col_size
     canvas.width = Cell.width*num_cols // canvas width must match cols*col_size
-    
-    // Add a click listener to allow the user to modify the simulation manually
-    canvas.addEventListener("click", function (event) {
-        var mousePos = getMousePos(canvas, event);
-        select_cell_at(mousePos.x, mousePos.y);
+      
+    canvas.addEventListener("mousedown", function (event) {
+        event.preventDefault() // prevent default mouse behavior, mainly preventing middle click from activating scroll mode
+            
+        if (event.button == 0) { //left click
+            var mousePos = getMousePos(canvas, event);
+            select_cell_at(mousePos.x, mousePos.y);
+            move_mode = 0;
+
+        } else if (event.button == 1) { // middle click
+            var mousePos = getMousePos(canvas, event);
+            select_cell_at(mousePos.x, mousePos.y);          
+            move_mode = 1; 
+
+        } else if (event.button == 2) { // right click 
+            var mousePos = getMousePos(canvas, event);
+            select_cell_at(mousePos.x, mousePos.y);         
+            move_mode = 2;   
+
+        } // else - extra buttons on fancy mouses? ignore if so.
+
+    }, false);    
+
+    canvas.addEventListener('contextmenu', function(event) { // prevent right clicks from bringing up the context menu
+        event.preventDefault();
     }, false);
 
     create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cel in the simulation
@@ -328,7 +370,7 @@ function select_cell_at(x, y) {
     let row, col, id;
     row = Math.floor(y/Cell.height)
     col = Math.floor(x/Cell.width)
-    console.log(`Selecting cell ${row},${col}`)
+    // console.log(`Selecting cell ${row},${col}`)
 
     active_cell[0] = row;
     active_cell[1] = col;
@@ -363,10 +405,22 @@ function handle_key_press(key_key) {
         target_col = active_cell[1] + 1
     } else {
         add_to_queue = false;
+        
+        if (key_key == 'Q' || key_key == 'q') { //undo all queued moves
+            console.log('TODO empty queue')
+
+        } else if (key_key == 'E' || key_key == 'e') { //undo last queued move
+            console.log('TODO undo last move')
+
+        }
     };
     
     if (add_to_queue) {
-        queued_moves.push({'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':1,'target_row':target_row, 'target_col':target_col}) //TODO owner = 0 is a stand-in for the user, for now
+        queued_moves.push({'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':1,'target_row':target_row, 'target_col':target_col, 'action':move_mode}) //TODO owner = 0 is a stand-in for the user, for now
+        
+        if (move_mode == 2) {move_mode = 0} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
+
+        // Update the active/highlighted cell to match the new target
         active_cell[0] = target_row
         active_cell[1] = target_col
         
