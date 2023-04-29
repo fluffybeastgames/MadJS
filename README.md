@@ -65,7 +65,7 @@ Distributed under the GNU GENERAL PUBLIC LICENSE VERSION 3. See `LICENSE.txt` fo
 <!-- CONTACT -->
 ## Contact
 
-Fluffy Beast - [fluffybeast.io](https://fluffbeast.io/mad) - contact@fluffybeast.io
+Fluffy Beast - [fluffybeast.io](https://fluffybeast.io/mad/) - contact@fluffybeast.io
 
 Project Link: [https://github.com/fluffybeastgames/MadJS](https://github.com/fluffybeastgames/MadJS)
 
