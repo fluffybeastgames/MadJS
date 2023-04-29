@@ -2,8 +2,6 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![MadJS screenshot][madjs-screenshot]](https://fluffybeast.io/mad)
-
 Welcome to MadJS
 
 What is MadJS?
