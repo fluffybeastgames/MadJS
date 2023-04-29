@@ -14,7 +14,7 @@ What is MadJS?
 <!-- GETTING STARTED -->
 ## Getting Started
 
-The game is currently a simple html page and a client-side javascript, and as such it should be able to run locally in any modern desktop browser. In the future, this will change to using (most likely) an express server with socket.io handling client-server handling.
+The game is currently a simple html page and a client-side javascript, and as such it should be able to run locally in any modern desktop browser. In the future, this will change to using (most likely) an express server with socket.io handling client-server communication.
 
 ### Prerequisites
 A modern desktop browser and a mouse, ideally with middle click and scroll wheel capabilities.
