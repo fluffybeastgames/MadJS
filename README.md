@@ -72,4 +72,4 @@ Project Link: [https://github.com/fluffybeastgames/MadJS](https://github.com/flu
 
 <!-- MARKDOWN LINKS & IMAGES -->
 
-[product-screenshot]: images/screenshot.png
+[product-screenshot]: images/mad.png
