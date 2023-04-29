@@ -5,21 +5,19 @@
 Welcome to MadJS
 
 What is MadJS?
-* A browser game written in Javascript, 
+* A browser game written in Javascript 
 * Based on an unreleased Python game, Madmirals. Both owe a debt of inspiration to generals.io
 * A WIP. This game is not finished nor ready for widespread testing
 * Open source! See the license for more
 * Made for the love of coding, gaming, and learning
 
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue. Thanks to all the people have contributed to expanding this template!
-
 <!-- GETTING STARTED -->
 ## Getting Started
 
-The game is currently a simple html page and client-side javascript, and as such it should be able to run locally in any modern browser. In the future, this will change to using (most likely) an express server with socket.io handling client-server handling.
+The game is currently a simple html page and a client-side javascript, and as such it should be able to run locally in any modern desktop browser. In the future, this will change to using (most likely) an express server with socket.io handling client-server handling.
 
 ### Prerequisites
-A modern browser
+A modern desktop browser and a mouse, ideally with middle click and scroll wheel capabilities.
 
 ### Installation
 Clone this repo and try opening index.html!
@@ -58,6 +56,17 @@ Zoom in and out by using the scroll wheel while hovering over the game canvas. T
 ## License
 
 Distributed under the GNU GENERAL PUBLIC LICENSE VERSION 3. See `LICENSE.txt` for more information.
+
+
+
+<!-- ACKNOWLEDGMENTS -->
+## Acknowledgments
+
+Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
+
+* [generals.io](https://generals.io)
+* [Readme Template](https://github.com/othneildrew/Best-README-Template)
+* You, for reading this far! I hope you enjoy the game!
 
 
 <!-- CONTACT -->
