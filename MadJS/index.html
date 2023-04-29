@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
-        <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-green.css">
+        <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-grey.css">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.min.css">        
         <meta charset="UTF-8">
         <title>Mad JS</title>
@@ -13,33 +13,23 @@
 
         <header class="w3-container w3-theme w3-padding" id="header">
             <div class="w3-left">
-                <h4>Fluffy Beast Presents</h4>
-                <h1 class="w3-xxxlarge w3-animate-bottom">Madmirals.JS</h1>
+                <h4>Fluffy Beast Presents MadJS</h4>
             </div>
         </header>
-        <div style="display:flex;">
-            <div class="w3-padding w3-white w3-display-container" style="height:100px">
-                <div class="w3-dropdown-hover">
-                <button class="w3-button w3-theme">Starting Configuration <i class="fa fa-caret-down"></i></button>
-                <div class="w3-dropdown-content w3-bar-block w3-border">
-                    <a href="#" class="w3-bar-item w3-button" onclick="populate_board_randomly(.33)">Random (Sparse)</a>
-                    <a href="#" class="w3-bar-item w3-button" onclick="populate_board_randomly(.5)">Random (Intermediate)</a>
-                    <a href="#" class="w3-bar-item w3-button" onclick="populate_board_randomly(.66)">Random (Crowded)</a>
-                </div>
-                </div>
-                <a class="w3-button w3-theme", id="pause_resume_button", onclick="toggle_pause()">Pause</a>
-                <a class="w3-button w3-theme", id="reset_button", onclick="reset_game()">Reset Simulation</a>
-                
-                <span id="turn_counter"></span>
+        <div class="w3-row">
+            <div class="w3-bar w3-black w3-rest">
+                <a class="w3-bar-item w3-button", id="reset_button", onclick="reset_game()">New Game</a>
+                <a class="w3-bar-item w3-button", id="pause_resume_button", onclick="toggle_pause()">Pause</a>
+                <span class="w3-bar-item" id="turn_counter"></span> 
             </div>
-
-            <div class="w3-padding w3-green w3-display-container" id="canvas_div" style="flex-grow:1;">
-                
-                <!-- <div class="w3-card-4"> -->
-                    <canvas id="canvas" width="100" height="100" style="border:1px solid lightgrey;position:absolute;">
-                        This feature requires HTML5 to view
-                    </canvas>
-                <!-- </div> -->
+        </div>
+        <div class="w3-row">
+            <div class="w3-padding w3-grey w3-rest" id="canvas_div">
+                <canvas id="canvas" width="100" height="100" style="border:1px solid lightgrey;position:absolute;">
+                </canvas>
+                <noscript>
+                    Javascript must be enabled to view and use this app.
+                </noscript>
             </div>
         </div>
             
