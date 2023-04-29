@@ -1,8 +1,6 @@
 
 <!-- ABOUT THE PROJECT -->
-## About The Project
-
-Welcome to MadJS
+## About MadJS
 
 What is MadJS?
 * A browser game written in Javascript 
@@ -41,9 +39,9 @@ Controls
 * Drag and drop - move canvas
 
 There are three options when it comes to moving around the board:
--Left click on a green cell to select it, then use the WASD keys to move, leaving a trail of cells behind. These cells will grow in size over time, to your benefit.
--You may instead move all of your troops by middle clicking on a cell and then moving it about with the WASD keys. The active cell will be highlighted in red instead of white to indicate the intended behavior.
--Finally, you may split a cell in half by right clicking it and then pressing a WASD key. The cell will be highlighted in yellow while waiting to split.
+ * Left click on a green cell to select it, then use the WASD keys to move, leaving a trail of cells behind. These cells will grow in size over time, to your benefit.
+ * Yo may instead move all of your troops by middle clicking on a cell and then moving it about with the WASD keys. The active cell will be highlighted in red instead of white to indicate the intended behavior.
+* Finally, you may split a cell in half by right clicking it and then pressing a WASD key. The cell will be highlighted in yellow while waiting to split.
 
 Zoom in and out by using the scroll wheel while hovering over the game canvas. The canvas can also be dragged and dropped by moving the mouse while the left button is depressed.
 
@@ -54,11 +52,8 @@ Zoom in and out by using the scroll wheel while hovering over the game canvas. T
 Distributed under the GNU GENERAL PUBLIC LICENSE VERSION 3. See `LICENSE.txt` for more information.
 
 
-
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
-
-Use this space to list resources you find helpful and would like to give credit to. I've included a few of my favorites to kick things off!
 
 * [generals.io](https://generals.io)
 * [Readme Template](https://github.com/othneildrew/Best-README-Template)
@@ -68,7 +63,7 @@ Use this space to list resources you find helpful and would like to give credit 
 <!-- CONTACT -->
 ## Contact
 
-Fluffy Beast - [@your_twitter](https://fluffbeast.io/mad) - contact@fluffybeast.io
+Fluffy Beast - [fluffybeast.io](https://fluffbeast.io/mad) - contact@fluffybeast.io
 
 Project Link: [https://github.com/fluffybeastgames/MadJS](https://github.com/fluffybeastgames/MadJS)
 
