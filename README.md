@@ -43,6 +43,8 @@ There are three options when it comes to moving around the board:
  * Yo may instead move all of your troops by middle clicking on a cell and then moving it about with the WASD keys. The active cell will be highlighted in red instead of white to indicate the intended behavior.
 * Finally, you may split a cell in half by right clicking it and then pressing a WASD key. The cell will be highlighted in yellow while waiting to split.
 
+Mountains (grey cells) cannot be crossed. Currently there is no logic to prevent them from spawning all around you. Refresh the page if you are stuck behind mountains.
+
 Zoom in and out by using the scroll wheel while hovering over the game canvas. The canvas can also be dragged and dropped by moving the mouse while the left button is depressed.
 
 
