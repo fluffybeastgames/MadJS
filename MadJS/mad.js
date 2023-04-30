@@ -31,6 +31,14 @@ const TERRAIN_TYPE_MOUNTAIN = 105
 const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106
 const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107
 
+const ENTITY_TYPE_ADMIRAL = 200
+const ENTITY_TYPE_SHIP = 201
+const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate
+const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate
+const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate
+const ENTITY_TYPE_INFANTRY = 205
+
+
 class Cell
 {
     static width = DEFAULT_CANVAS_WIDTH;
@@ -51,7 +59,8 @@ class Cell
         this.alive = false //start with none alive and add starting config downstream
         this.alive_next_turn = false
         this.troops = 0
-        this.terrain = TERRAIN_TYPE_WATER
+        this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
+        this.entity = null // what type of entity (if any) is here - eg admiral
 
     }   
 
@@ -63,15 +72,30 @@ class Cell
             this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
         }
         
+        //Draw outline around the cell
         this.context.strokeStyle = Cell.alive_color;
         this.context.lineWidth = 1;
         this.context.strokeRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
         
+        // If there is an admiral here, draw a star to represent it
+        if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
+            this.draw_star()
+            
+        } else if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
+            this.draw_circle()
+        } 
+
+        this.draw_troops()
+
+    }
+
+    draw_circle() {
+        this.context.beginPath()
         // Draw the circle containing the cell, its remains, or nothing
         let x, y, radius, fill, stroke, strokeWidth;
         x = this.col*Cell.width + Cell.width/2;
         y = this.row*Cell.height + Cell.height/2;
-        radius = Cell.width/2;
+        radius = Cell.width/2 - 1;
         let colors;
         if (this.owner != null) {
             colors = get_owner_color(this.owner);
@@ -84,7 +108,7 @@ class Cell
             stroke = null;
         }
 
-        strokeWidth='1';
+        strokeWidth='2';
         
         this.context.beginPath()
         this.context.arc(x, y, radius, 0, 2 * Math.PI, false)
@@ -98,19 +122,48 @@ class Cell
           this.context.strokeStyle = stroke;
           this.context.stroke(); // apply the outer border
         }
+        // this.context.stroke()
+    }
 
+    draw_star() { // Draws a 5-pointed star within the bounds of the cell, representing an Admiral cell
+    // Credit to https://stackoverflow.com/a/45140101
+        var num_points = 5
+        var inset = .5
+        var x = this.col*Cell.width + Cell.width/2;
+        var y = this.row*Cell.height + Cell.height/2;
+        var radius = Cell.width/2;
+
+            this.context.save();
+            this.context.fillStyle = get_owner_color(this.owner)[0];
+            this.context.beginPath();
+            this.context.translate(x, y);
+            this.context.moveTo(0, 0-radius);
+            for (var i = 0; i < num_points; i++) {
+                this.context.rotate(Math.PI / num_points);
+                this.context.lineTo(0, 0 - (radius*inset));
+                this.context.rotate(Math.PI / num_points);
+                this.context.lineTo(0, 0 - radius);
+            }
+            this.context.closePath();
+            this.context.fill();
+            this.context.restore();
+    }
+    
+    draw_troops() {
+        var x = this.col*Cell.width + Cell.width/2;
+        var y = this.row*Cell.height + Cell.height/2;
         // Add the number of troops (if any)
         if (this.troops != 0) {
             this.context.font = `${font_size}px Comic Sans MS`;
             this.context.fillStyle = '#FFFFFF';
             this.context.textBaseline = 'middle';
             this.context.textAlign = 'center';
-            this.context.fillText(this.troops, x, y);
-            //this.context.fillText(1234, x, y, Cell.width);
+            this.context.fillText(this.troops, x, y, Cell.width); //limit the width to the size of the cell, squeezing text if need be
         }
+        
     }
-    
     draw_arrow(dir) { // Draw an arrow over the cell to indicate a queued move
+        this.context.beginPath();
         let x_origin, y_start, x_dest, y_dest;
         const strokeWidth = 2;
 
@@ -154,6 +207,65 @@ class Cell
     }
 };
 
+function init(){
+    console.log('Initializing a Madmirals instance')
+    
+    // Add event listener on keydown
+    document.addEventListener('keydown', (event) => {
+        if (valid_key_presses.includes(event.key)) {
+            handle_key_press(event.key)
+        }
+    }, false);
+
+    num_players = 3;
+    num_rows = 20 // canvas height must match rows*row_size
+    num_cols = 30
+    game_tick = 0
+    move_mode = 1
+
+    canvas = document.getElementById('canvas'); // Get a reference to the canvas
+    // let canvas_div = document.getElementById('canvas_div'); // the div that exists solely to contain the canvas
+    context = canvas.getContext('2d');
+
+    canvas.height = Cell.height*num_rows // canvas width must match cols*col_size
+    canvas.width = Cell.width*num_cols // canvas width must match cols*col_size
+
+    canvas.addEventListener('mousedown', function (event) { mouse_handler(event) }, false); //our main click handler function
+    canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
+    canvas.addEventListener('wheel', function (event) { wheel_handler(event) }, false); // zoom in/out with the scroll wheel
+    drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
+
+    create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    spawn_admirals(num_players, 50); // the number of entities to create and the number of troops they start with
+    spawn_terrain();
+    render_board(); // display the starting conditions for the sim
+    game_on = true; // start with the simulation running instead of paused
+    window.requestAnimationFrame(() => gameLoop()); // start the game loop
+}
+
+function gameLoop() {
+    if (game_on) {
+        game_tick++;
+        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag
+        render_board(); // Redraw the game canvas  
+        check_for_game_over();
+    }
+    setTimeout( () => { window.requestAnimationFrame(() => gameLoop()); }, refresh_time) // therefore each game loop will last at least refresh_time ms
+}
+
+function reset_game() {
+    console.log(`Restarting simulation with starting config ${last_starting_configuration}`)
+    
+    if(isNaN(last_starting_configuration)) {
+        populate_board_randomly(.49)
+    }
+    else {
+        populate_board_randomly(last_starting_configuration)
+    }
+
+    render_board();
+}
+
 function get_owner_color(owner) { // returns fill and stroke, respectively
     switch(owner) {
         case 0:
@@ -168,13 +280,15 @@ function get_owner_color(owner) { // returns fill and stroke, respectively
 
 function update_game() {
     //growth phase
-    if (game_tick % 10 == 0) {
-        cells.forEach(cell => {
-            if(cell.owner != null) {
+    cells.forEach(cell => {
+        if(cell.owner != null) {
+            if (cell.entity == ENTITY_TYPE_ADMIRAL && game_tick % 2 == 0) { // admiral grow every 2 turns
                 cell.troops++;
+            } else if (game_tick % 25 == 0) { // regular owned cells grow every 25 turns
+            cell.troops++;
             }
-        }); 
-    }
+        }
+    });
 
     //Process the queue
     var valid_move = false
@@ -250,22 +364,6 @@ function create_board_cells(num_rows, num_cols) {
     }
 }
 
-function highlight_active_cell() {
-    cells.forEach(cell => {
-        if(cell.row == active_cell[0] && cell.col == active_cell[1]) {
-            cell.context.lineWidth = 5;
-            
-            if (move_mode == 0) { cell.context.strokeStyle = '#FFFFFF'; }
-            else if (move_mode == 1) { cell.context.strokeStyle = '#FF0000'; }
-            else if (move_mode == 2) { cell.context.strokeStyle = '#FFcc00'; }
-    
-            cell.context.strokeRect(cell.col*Cell.width, cell.row*Cell.height, Cell.width, Cell.height)
-  
-            
-        }
-    }); 
-}
-
 function render_board() {    
     context.fillStyle='#0E306C'  // High Tide Blue '#DDDDDD' // grey
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
@@ -287,6 +385,28 @@ function render_board() {
 
     // display the turn number
     document.getElementById('turn_counter').innerText = `Turn ${game_tick}`
+}
+
+// Show the user where they are by highlighting the active cell
+function highlight_active_cell() {
+    cells.forEach(cell => {
+        if(cell.row == active_cell[0] && cell.col == active_cell[1]) {
+            cell.context.lineWidth = 5;
+            
+            if (move_mode == 0) { cell.context.strokeStyle = '#FFFFFF'; }
+            else if (move_mode == 1) { cell.context.strokeStyle = '#FF0000'; }
+            else if (move_mode == 2) { cell.context.strokeStyle = '#FFcc00'; }
+    
+            cell.context.strokeRect(cell.col*Cell.width, cell.row*Cell.height, Cell.width, Cell.height);
+            
+            // Slightly darken the cells around the active cell to highlight its location
+            context.fillStyle = "rgba(0, 0, 0, 0.2)";
+            cell.context.fillRect((cell.col-1)*Cell.width, cell.row*Cell.height, Cell.width, Cell.height);
+            cell.context.fillRect((cell.col+1)*Cell.width, cell.row*Cell.height, Cell.width, Cell.height);
+            cell.context.fillRect((cell.col)*Cell.width, (cell.row-1)*Cell.height, Cell.width, Cell.height);
+            cell.context.fillRect((cell.col)*Cell.width, (cell.row+1)*Cell.height, Cell.width, Cell.height);
+        }
+    }); 
 }
 
 function mouse_handler(event) {
@@ -330,74 +450,23 @@ function wheel_handler(event) {
     canvas.height = Cell.height*num_rows;
 }
 
-function init(){
-    console.log('Initializing a Madmirals instance')
-    
-    // Add event listener on keydown
-    document.addEventListener('keydown', (event) => {
-        if (valid_key_presses.includes(event.key)) {
-            handle_key_press(event.key)
-        }
-
-    }, false);
-
-    num_players = 3;
-    num_rows = 20 // canvas height must match rows*row_size
-    num_cols = 30
-    game_tick = 0
-    move_mode = 1
-
-    canvas = document.getElementById('canvas'); // Get a reference to the canvas
-    // let canvas_div = document.getElementById('canvas_div'); // the div that exists solely to contain the canvas
-    context = canvas.getContext('2d');
-
-    canvas.height = Cell.height*num_rows // canvas width must match cols*col_size
-    canvas.width = Cell.width*num_cols // canvas width must match cols*col_size
-
-    canvas.addEventListener('mousedown', function (event) { mouse_handler(event) }, false); //our main click handler function
-    canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
-    canvas.addEventListener('wheel', function (event) { wheel_handler(event) }, false); // zoom in/out with the scroll wheel
-    drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
-
-    create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
-    spawn_admirals(num_players, 50); // the number of entities to create and the number of troops they start with
-    spawn_terrain();
-    render_board(); // display the starting conditions for the sim
-    game_on = true; // start with the simulation running instead of paused
-    window.requestAnimationFrame(() => gameLoop()); // start the game loop
-}
 
 function check_for_game_over() {
     //if the game has been won, lost, or abandoned, mark it as such and alert the user
     
-    let x = new Array(num_players)
-
+    let troop_count = new Array(num_players).fill(0);
+    let admiral_count = new Array(num_players).fill(0);
+    cells.forEach(cell => {
+        if (cell.owner != null) {
+            troop_count[cell.owner] += cell.troops;
+            if (cell.entity == ENTITY_TYPE_ADMIRAL) { admiral_count[cell.owner] ++ };            
+        }
+    });
+    
 
     if (!game_on) {
         alert('Game over!'); 
     }
-}
-function gameLoop() {
-    if (game_on) {
-        game_tick++;
-        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag
-        render_board(); // Redraw the game canvas  
-        check_for_game_over();
-    }
-    setTimeout( () => { window.requestAnimationFrame(() => gameLoop()); }, refresh_time) // therefore each game loop will last at least refresh_time ms
-}
-
-function reset_game() {
-    console.log(`Restarting simulation with starting config ${last_starting_configuration}`)
-    
-    if(isNaN(last_starting_configuration)) {
-        populate_board_randomly(.49)
-    }
-    else {
-        populate_board_randomly(last_starting_configuration)
-    }
-
-    render_board();
 }
 
 function populate_board_randomly(fill_rate) {
@@ -415,6 +484,8 @@ function spawn_admirals(num_admirals, starting_troops) {
             if (cells[rand_cell].owner == null) {
                 cells[rand_cell].owner = i;
                 cells[rand_cell].troops = starting_troops;
+                cells[rand_cell].entity = ENTITY_TYPE_ADMIRAL;
+                
                 not_found = false;
             }
         } 
