@@ -1,7 +1,8 @@
 "use strict";
 let canvas, context; // the canvas and context we will draw the game cells on
 let num_rows, num_cols; // the number of rows and columns in the simulation
-const cells = []; // will hold an array Cell objects
+const cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
+
 const refresh_time = 500 // ms to wait before rendering each new frame
 let game_on, game_tick; // when game_on, the game will loop every ~refresh_time ms, increasing the game_tick and advancing the simulation
 let last_starting_configuration;
@@ -13,7 +14,6 @@ const queued_moves = []; // each entry will be an object containing the next que
 
 let move_mode; //0 for normal/left click mode, 1 for move all/middle click mode, 2 for move half/right click mode
 let num_players; // number of players in the game. Player 0 = human, rest are bots, for now
-
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 15;
@@ -38,7 +38,6 @@ const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Inc
 const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate
 const ENTITY_TYPE_INFANTRY = 205
 
-
 class Cell
 {
     static width = DEFAULT_CANVAS_WIDTH;
@@ -48,8 +47,8 @@ class Cell
     static alive_color_stroke = '#6600bb'
     static dead_color_stroke = '#666666'
     static mountain_color = '#BBBBBB'
-    
-        
+    static swamp_color = '#0E735A'
+            
     constructor(context, id, row, col) {
         this.context = context; // the context of the canvas we'll be drawing to
         this.id = id //position w/in the 1d array of cells
@@ -69,6 +68,9 @@ class Cell
         
         if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
             this.context.fillStyle = Cell.mountain_color            
+            this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
+        } else if (this.terrain == TERRAIN_TYPE_SWAMP) {
+            this.context.fillStyle = Cell.swamp_color            
             this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
         }
         
@@ -99,8 +101,6 @@ class Cell
         let colors;
         if (this.owner != null) {
             colors = get_owner_color(this.owner);
-        // if (this.alive) {
-        //     colors = get_owner_color(0);
             fill = colors[0];
             stroke = colors[1];
         } else {
@@ -236,34 +236,25 @@ function init(){
     drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
 
     create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    create_client_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    
     spawn_admirals(num_players, 50); // the number of entities to create and the number of troops they start with
     spawn_terrain();
     render_board(); // display the starting conditions for the sim
     game_on = true; // start with the simulation running instead of paused
-    window.requestAnimationFrame(() => gameLoop()); // start the game loop
+    window.requestAnimationFrame(() => game_loop()); // start the game loop
 }
 
-function gameLoop() {
+function game_loop() {
     if (game_on) {
         game_tick++;
-        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag
-        render_board(); // Redraw the game canvas  
         check_for_game_over();
+        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag
+        send_game_state();
+        render_board(); // Redraw the game canvas  
+        
     }
-    setTimeout( () => { window.requestAnimationFrame(() => gameLoop()); }, refresh_time) // therefore each game loop will last at least refresh_time ms
-}
-
-function reset_game() {
-    console.log(`Restarting simulation with starting config ${last_starting_configuration}`)
-    
-    if(isNaN(last_starting_configuration)) {
-        populate_board_randomly(.49)
-    }
-    else {
-        populate_board_randomly(last_starting_configuration)
-    }
-
-    render_board();
+    setTimeout( () => { window.requestAnimationFrame(() => game_loop()); }, refresh_time) // therefore each game loop will last at least refresh_time ms
 }
 
 function get_owner_color(owner) { // returns fill and stroke, respectively
@@ -279,79 +270,81 @@ function get_owner_color(owner) { // returns fill and stroke, respectively
 }
 
 function update_game() {
-    //growth phase
-    cells.forEach(cell => {
-        if(cell.owner != null) {
-            if (cell.entity == ENTITY_TYPE_ADMIRAL && game_tick % 2 == 0) { // admiral grow every 2 turns
+    if (game_on) {
+        //growth phase
+        cells.forEach(cell => {
+            if(cell.owner != null) {
+                if (cell.entity == ENTITY_TYPE_ADMIRAL && game_tick % 2 == 0) { // admiral grow every 2 turns
+                    cell.troops++;
+                } else if (cell.terrain == TERRAIN_TYPE_SWAMP && game_tick % 1 == 0) { // swamps drain every turn
+                    cell.troops--;
+
+                    if (cell.troops < 0) {
+                        cell.troops = 0;
+                        cell.owner = null;
+                    }
+                } else if (game_tick % 25 == 0) { // regular owned cells grow every 25 turns
                 cell.troops++;
-            } else if (game_tick % 25 == 0) { // regular owned cells grow every 25 turns
-            cell.troops++;
+                }
+            }
+        });
+
+        //Process the queue
+        var valid_move = false
+        let move, troops_to_move;
+        while (!valid_move && queued_moves.length>0) {
+            move = queued_moves.shift();
+            
+            let cell_id_source, cell_id_dest;
+            cell_id_source = move.row * num_cols + move.col; // 0 is the topleft most cells, and there num_cols cols per row        
+            cell_id_dest = move.target_row * num_cols + move.target_col
+
+            // Only complete the move if the queuer owns the source cell
+            if (cells[cell_id_source].owner == move.queuer) {
+                // console.log(move);     
+                
+                // Is it a valid destination?
+                if (cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
+                    valid_move = false
+                } else {
+                    valid_move = true
+
+                    if (move.action == 0) { //left click
+                        troops_to_move =  cells[cell_id_source].troops - 1 ;
+                    } else if (move.action == 1) { // middle click
+                        if (cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL) {
+                            troops_to_move = cells[cell_id_source].troops;
+                        } else {troops_to_move = cells[cell_id_source].troops - 1;}
+                        
+                    } else { //right click
+                        troops_to_move =  Math.floor(cells[cell_id_source].troops/2);
+                    }                
+                    
+                    // If the queuer also owns the destination cell, stack their troops together
+                    if (cells[cell_id_dest].owner == move.queuer) {
+                        cells[cell_id_dest].troops += troops_to_move;
+                        
+                    } else { // Otherwise invade the destination cell
+                        cells[cell_id_dest].troops -= troops_to_move
+                        if (cells[cell_id_dest].troops < 0) {
+                            cells[cell_id_dest].troops *= -1;
+                            cells[cell_id_dest].owner = move.queuer;
+                        }
+                    }
+
+                    cells[cell_id_source].troops -= troops_to_move;
+                    
+                    if (cells[cell_id_source].troops <= 0) { 
+                        cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
+                    }
+
+                } 
             }
         }
-    });
-
-    //Process the queue
-    var valid_move = false
-    let move, troops_to_move;
-    while (!valid_move && queued_moves.length>0) {
-        move = queued_moves.shift();
-        
-        let cell_id_source, cell_id_dest;
-        cell_id_source = move.row * num_cols + move.col; // 0 is the topleft most cells, and there num_cols cols per row        
-        cell_id_dest = move.target_row * num_cols + move.target_col
-
-        // Only complete the move if the queuer owns the source cell
-        if (cells[cell_id_source].owner == move.queuer) {
-            // console.log(move);     
-            
-            // Is it a valid destination?
-            if (cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
-                valid_move = false
-            } else {
-                valid_move = true
-
-                if (move.action == 0) { //left click
-                    troops_to_move =  cells[cell_id_source].troops - 1 ;
-                } else if (move.action == 1) { // middle click
-                    troops_to_move =  cells[cell_id_source].troops;
-                } else { //right click
-                    troops_to_move =  Math.floor(cells[cell_id_source].troops/2);
-                }                
-                
-                // If the queuer also owns the destination cell, stack their troops together
-                if (cells[cell_id_dest].owner == move.queuer) {
-                    cells[cell_id_dest].troops += troops_to_move;
-                    
-                } else { // Otherwise invade the destination cell
-                    cells[cell_id_dest].troops -= troops_to_move
-                    if (cells[cell_id_dest].troops < 0) {
-                        cells[cell_id_dest].troops *= -1;
-                        cells[cell_id_dest].owner = move.queuer;
-                    }
-                }
-
-                cells[cell_id_source].troops -= troops_to_move;
-                if (cells[cell_id_source].troops <= 0) { 
-                    cells[cell_id_source].owner = null;
-                }
-
-            } 
-        }
     }
 }
 
-function get_cell_status(row, col) { // returns 1 if valid and alive and otherwise 0
-    let id;
-    if (row >= 0 && row < num_rows && col >= 0 && col < num_cols) {
-        id = row * num_cols + col // id 0 is the topleft most cells, and there num_cols cols per row        
-        if  (cells[id].alive) { 
-            return 1;
-        } 
-    }
-    return 0 // if cell is dead or out of bounds
-}
-
-function create_board_cells(num_rows, num_cols) {
+function create_board_cells(num_rows, num_cols) { // in the future this will only be defined on the server side
     console.log('creating cell grid')
 
     let id;
@@ -363,6 +356,21 @@ function create_board_cells(num_rows, num_cols) {
         }
     }
 }
+
+function create_client_cells(num_rows, num_cols) { // in the future this will only be defined on the client side
+    console.log('creating client cell grid')
+
+    let id;
+    id = 0
+    for(let r = 0; r < num_rows; r++) {
+        for(let c = 0; c < num_cols; c++) {
+            cells_client.push(new Cell(context, id, r, c));
+            id++;
+        }
+    }
+}
+
+
 
 function render_board() {    
     context.fillStyle='#0E306C'  // High Tide Blue '#DDDDDD' // grey
@@ -462,18 +470,17 @@ function check_for_game_over() {
             if (cell.entity == ENTITY_TYPE_ADMIRAL) { admiral_count[cell.owner] ++ };            
         }
     });
-    
 
-    if (!game_on) {
-        alert('Game over!'); 
+    if (admiral_count[0] == 0) {
+        game_on = false;
+        alert('Game over! You lose.'); 
+    } else {
+        const sum_admirals = admiral_count.reduce((partialSum, a) => partialSum + a, 0);
+        if (sum_admirals == admiral_count[0]) {
+            game_on = false;
+            alert('You win!'); 
+        }
     }
-}
-
-function populate_board_randomly(fill_rate) {
-    cells.forEach(cell => {
-        cell.alive = Math.random() >= fill_rate;
-    });
-    last_starting_configuration = fill_rate;
 }
 
 function spawn_admirals(num_admirals, starting_troops) {
@@ -498,14 +505,11 @@ function spawn_terrain() {
             var cell_code = Math.random();
             if (cell_code < .25) {
                 cell.terrain = TERRAIN_TYPE_MOUNTAIN;
-            }
-            
+            } else if (cell_code < .3) {
+                cell.terrain = TERRAIN_TYPE_SWAMP;
+            };   
         }
-        //cell.alive = Math.random() >= fill_rate;
     });
-    
-
-
 }
 
 function toggle_pause() {
@@ -525,18 +529,6 @@ function getMousePos(canvas, event) {
     };
 }
 
-function toggle_cell_at(x, y){
-    let row, col, id;
-    row = Math.floor(y/Cell.height)
-    col = Math.floor(x/Cell.width)
-    
-    if (row >= 0 && row < num_rows && col >= 0 && col < num_cols) {
-        id = row * num_cols + col // id 0 is the topleft most cells, and there num_cols cols per row        
-        cells[id].alive = !cells[id].alive
-    }   
-    render_board()
-}
-
 function select_cell_at(x, y) {
     let row, col, id;
     row = Math.floor(y/Cell.height)
@@ -546,10 +538,10 @@ function select_cell_at(x, y) {
     active_cell[0] = row;
     active_cell[1] = col;
     
-    if (row >= 0 && row < num_rows && col >= 0 && col < num_cols) {
-        id = row * num_cols + col // id 0 is the topleft most cells, and there num_cols cols per row        
-        cells[id].alive = !cells[id].alive
-    };
+    // if (row >= 0 && row < num_rows && col >= 0 && col < num_cols) {
+    //     id = row * num_cols + col // id 0 is the topleft most cells, and there num_cols cols per row        
+    //     cells[id].alive = !cells[id].alive
+    // };
     render_board();
 }
 
@@ -648,3 +640,54 @@ function drag_canvas_event_handler(canvas_element) {
         document.onmousemove = null;
     }
 }
+
+//An attempt at predicting what the server to client communication will look like
+function send_game_state() {
+    var player_id = 0;
+
+    // Start with header information about the game
+    let game_string = '{ "game": {' +
+        `"state" : "${game_on}",` +
+        `"turn": "${game_tick}",` +
+        `"row_count": "${num_rows}",` +
+        `"col_count": "${num_cols}"` +
+        '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
+
+    // Then loop through and add info about each visible cell
+    cells.forEach(cell => {
+        // if (cell.id % 10 == 0) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations
+        //if (cell.owner != null) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations
+        if (true) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations        
+            let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
+            if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
+            if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
+            if (cell.entity != null) {cell_string += `, "entity":${cell.entity}`}
+   
+            cell_string += '}, '
+            game_string += cell_string ;
+        }
+    });
+
+    game_string = game_string.slice(0,-2); // remove the last two characters from the string - either remove a trailing ', ' or if no cells are included then then the '  ' from the end of the header
+    game_string += ']}'; // close the whole object-generating string    
+
+    let json_obj = JSON.parse(game_string);
+    
+    // console.log(game_string);    
+    // console.log(game_json.game.row_count);
+    
+    // update_board_with_json(json_obj)
+    
+}
+
+// function update_board_with_json(json) {
+//         console.log('Attempting a new way of rendering')
+//         json.board.forEach(cell => {
+//             console.log(cell.id, cell.row, cell.col)
+//         });
+
+//     });
+
+// }
+
+
