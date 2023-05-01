@@ -1,27 +1,58 @@
 "use strict";
+
+///////////
+// Local App constants and global variables
+///////////
 let canvas, context; // the canvas and context we will draw the game cells on
 const cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
-
-const refresh_time = 500 // ms to wait before rendering each new frame
-let game_on, game_tick; // when game_on, the game will loop every ~refresh_time ms, increasing the game_tick and advancing the simulation
-let last_starting_configuration;
-
+let  game_tick_local;
+var local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
 const valid_key_presses = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q'] //, 37]
-
-const queued_moves = []; // each entry will be an object containing the next queued move, the owner of the action, the action to perform, and the direction it is pointed
-
-let move_mode; //0 for normal/left click mode, 1 for move all/middle click mode, 2 for move half/right click mode
+var local_move_queue = [];
+var local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 15;
-const DEFAULT_ZOOM = 5;
+const DEFAULT_ZOOM = 4;
 let zoom_scale = DEFAULT_ZOOM; // for scroll wheel zooming
 
 const DEFAULT_CANVAS_WIDTH = 50
 const DEFAULT_CANVAS_HEIGHT = 50
 const DEFAULT_FONT_SIZE = 18
 var font_size = DEFAULT_FONT_SIZE;
+
+
+// class FrontApp {
+
+// }
+// var local_app = new FrontApp();
+
+///////////
+// Server constants and global variables
+///////////
+const refresh_time = 500 // ms to wait before rendering each new frame
+let game_on; // when game_on, the game will loop every ~refresh_time ms, increasing the game_tick and advancing the simulation
+let  game_tick_server;
+let last_starting_configuration;
+var game = null;
+let move_mode; //0 for normal/left click mode, 1 for move all/middle click mode, 2 for move half/right click mode
+
+const GAME_MODE_FFA = 1
+const GAME_MODE_FFA_CUST = 2
+const GAME_MODE_REPLAY = 3
+
+
+const GAME_STATUS_INIT = 0 // loading
+const GAME_STATUS_READY = 1 // able to start
+const GAME_STATUS_IN_PROGRESS = 2 //
+const GAME_STATUS_PAUSE = 3 //
+const GAME_STATUS_GAME_OVER_WIN = 4 // game instance is complete and can no longer be played
+const GAME_STATUS_GAME_OVER_LOSE = 5 // game instance is complete and can no longer be played
+
+///////////
+// Shared constants
+///////////
 
 const TERRAIN_TYPE_WATER = 101
 const TERRAIN_TYPE_SWAMP = 104 
@@ -36,21 +67,15 @@ const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Inc
 const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate
 const ENTITY_TYPE_INFANTRY = 205
 
-const GAME_STATUS_INIT = 0 // loading
-const GAME_STATUS_READY = 1 // able to start
-const GAME_STATUS_IN_PROGRESS = 2 //
-const GAME_STATUS_PAUSE = 3 //
-const GAME_STATUS_GAME_OVER_WIN = 4 // game instance is complete and can no longer be played
-const GAME_STATUS_GAME_OVER_LOSE = 5 // game instance is complete and can no longer be played
+///////////
+// Server classes and functions
+///////////
 
-const GAME_MODE_FFA = 1
-const GAME_MODE_FFA_CUST = 2
-const GAME_MODE_REPLAY = 3
 
-var game = null;
 class Game {
     constructor(n_rows, n_cols, fog_of_war) {
         this.players = []
+        this.player_turn_order = []
         this.game_state = GAME_STATUS_INIT
         this.fog_of_war = fog_of_war;
         this.num_rows = n_rows
@@ -60,11 +85,15 @@ class Game {
     }
 
     add_human(session_id, color) {
-        this.players.push(new HumanPlayer(this.players.length, session_id, color))
+        var new_id = this.players.length
+        this.player_turn_order.push(new_id)
+        this.players.push(new HumanPlayer(new_id, session_id, color))
     }
 
     add_bot(personality, color) {
-        this.players.push(new Bot(this.players.length, personality, color))
+        var new_id = this.players.length
+        this.player_turn_order.push(new_id)
+        this.players.push(new Bot(new_id, personality, color))
     }
     
     initialize_cells() {
@@ -84,6 +113,7 @@ class HumanPlayer {
         this.uid = uid // 0-n, may be unecessary as we can use the position in Players[] as the uid
         this.session_id = session_id // the session ID of the connected player
         this.color = color //temp. green
+        this.queued_moves = []
     }
 }
 
@@ -92,6 +122,10 @@ class Bot {
         this.uid = uid
         this.personality = personality
         this.color = color
+        this.queued_moves = []
+    }
+
+    take_move() {
 
     }
 }
@@ -249,10 +283,14 @@ class Cell {
 
 function init(){
     console.log('Initializing a Madmirals instance')
-    
-    let n_rows = 15 // canvas height must match rows*row_size
-    let n_cols = 25
-    let fog_of_war = false;
+    //var rand_cell = Math.floor(Math.random() * game.num_rows * game.num_cols);
+    // let n_rows = 15
+    // let n_cols = 25
+
+    let n_rows = 8 + Math.floor(Math.random()*20) 
+    let n_cols = 8 + Math.floor(Math.random()*30)
+
+    let fog_of_war = true;
 
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', '#0a5a07')
@@ -268,7 +306,7 @@ function init(){
     }, false);
 
 
-    game_tick = 0
+    game_tick_server = 0
     move_mode = 1
 
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
@@ -295,7 +333,7 @@ function init(){
 
 function game_loop() {
     if (game_on) {
-        game_tick++;
+        game_tick_server++;
         check_for_game_over();
         update_game(); // check each cell to see if it should be alive next turn and update the .alive tag        
         render_board(); // Redraw the game canvas  
@@ -320,78 +358,80 @@ function get_owner_color(owner) { // returns fill and stroke, respectively
     return ['#444444'] // default to grey
 }
 
-function update_game() {
+function update_game() { // advance game by 1 tick
     if (game_on) {
         //growth phase
         game.cells.forEach(cell => {
             if(cell.owner != null) {
-                if (cell.entity == ENTITY_TYPE_ADMIRAL && game_tick % 2 == 0) { // admiral grow every 2 turns
+                if (cell.entity == ENTITY_TYPE_ADMIRAL && game_tick_server % 2 == 0) { // admiral grow every 2 turns
                     cell.troops++;
-                } else if (cell.terrain == TERRAIN_TYPE_SWAMP && game_tick % 1 == 0) { // swamps drain every turn
+                } else if (cell.terrain == TERRAIN_TYPE_SWAMP && game_tick_server % 1 == 0) { // swamps drain every turn
                     cell.troops--;
 
                     if (cell.troops < 0) {
                         cell.troops = 0;
                         cell.owner = null;
                     }
-                } else if (game_tick % 25 == 0) { // regular owned cells grow every 25 turns
+                } else if (game_tick_server % 25 == 0) { // regular owned cells grow every 25 turns
                 cell.troops++;
                 }
             }
         });
 
-        //Process the queue
-        var valid_move = false
-        let move, troops_to_move;
-        while (!valid_move && queued_moves.length>0) {
-            move = queued_moves.shift();
-            
-            let cell_id_source, cell_id_dest;
-            cell_id_source = move.row * game.num_cols + move.col; // 0 is the topleft most cells, and there game.num_cols cols per row        
-            cell_id_dest = move.target_row * game.num_cols + move.target_col
-
-            // Only complete the move if the queuer owns the source cell
-            if (game.cells[cell_id_source].owner == move.queuer) {
-                // console.log(move);     
+        game.players.forEach(player => {
+            //Process the queue. Note that this currently always goes in the same order - we want to flip flop this order every turn
+            var valid_move = false
+            let move, troops_to_move;
+            while (!valid_move && player.queued_moves.length>0) {
+                move = player.queued_moves.shift();
                 
-                // Is it a valid destination?
-                if (game.cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
-                    valid_move = false
-                } else {
-                    valid_move = true
+                let cell_id_source, cell_id_dest;
+                cell_id_source = move.row * game.num_cols + move.col; // 0 is the topleft most cells, and there game.num_cols cols per row        
+                cell_id_dest = move.target_row * game.num_cols + move.target_col
 
-                    if (move.action == 0) { //left click
-                        troops_to_move =  game.cells[cell_id_source].troops - 1 ;
-                    } else if (move.action == 1) { // middle click
-                        if (game.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL) {
-                            troops_to_move = game.cells[cell_id_source].troops;
-                        } else {troops_to_move = game.cells[cell_id_source].troops - 1;}
-                        
-                    } else { //right click
-                        troops_to_move =  Math.floor(game.cells[cell_id_source].troops/2);
-                    }                
+                // Only complete the move if the queuer owns the source cell
+                if (game.cells[cell_id_source].owner == move.queuer) {
+                    // console.log(move);     
                     
-                    // If the queuer also owns the destination cell, stack their troops together
-                    if (game.cells[cell_id_dest].owner == move.queuer) {
-                        game.cells[cell_id_dest].troops += troops_to_move;
+                    // Is it a valid destination?
+                    if (game.cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
+                        valid_move = false
+                    } else {
+                        valid_move = true
+
+                        if (move.action == 0) { //left click
+                            troops_to_move =  game.cells[cell_id_source].troops - 1 ;
+                        } else if (move.action == 1) { // middle click
+                            if (game.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL) {
+                                troops_to_move = game.cells[cell_id_source].troops;
+                            } else {troops_to_move = game.cells[cell_id_source].troops - 1;}
+                            
+                        } else { //right click
+                            troops_to_move =  Math.floor(game.cells[cell_id_source].troops/2);
+                        }                
                         
-                    } else { // Otherwise invade the destination cell
-                        game.cells[cell_id_dest].troops -= troops_to_move
-                        if (game.cells[cell_id_dest].troops < 0) {
-                            game.cells[cell_id_dest].troops *= -1;
-                            game.cells[cell_id_dest].owner = move.queuer;
+                        // If the queuer also owns the destination cell, stack their troops together
+                        if (game.cells[cell_id_dest].owner == move.queuer) {
+                            game.cells[cell_id_dest].troops += troops_to_move;
+                            
+                        } else { // Otherwise invade the destination cell
+                            game.cells[cell_id_dest].troops -= troops_to_move
+                            if (game.cells[cell_id_dest].troops < 0) {
+                                game.cells[cell_id_dest].troops *= -1;
+                                game.cells[cell_id_dest].owner = move.queuer;
+                            }
                         }
-                    }
 
-                    game.cells[cell_id_source].troops -= troops_to_move;
-                    
-                    if (game.cells[cell_id_source].troops <= 0) { 
-                        game.cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
-                    }
+                        game.cells[cell_id_source].troops -= troops_to_move;
+                        
+                        if (game.cells[cell_id_source].troops <= 0) { 
+                            game.cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
+                        }
 
-                } 
+                    } 
+                }
             }
-        }
+        });
 
         send_game_state();
     }
@@ -426,14 +466,14 @@ function render_board() {
     highlight_active_cell()
 
     // Draw arrows over each square containig one or more queued moves
-    queued_moves.forEach(move => {
+    local_move_queue.forEach(move => {
         let id;
         id = move.row * game.num_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
         cells_client[id].draw_arrow(move.dir);
     }); 
 
     // display the turn number
-    document.getElementById('turn_counter').innerText = `Turn ${game_tick}`
+    document.getElementById('turn_counter').innerText = `Turn ${game_tick_local}`
 }
 
 // Show the user where they are by highlighting the active cell
@@ -484,9 +524,9 @@ function wheel_handler(event) {
     // event.preventDefault(); 
     
     if (event.deltaY > 0 && zoom_scale > MIN_SCALE) { // zoom out
-        zoom_scale --
+        zoom_scale --;
     } else if (event.deltaY < 0 && zoom_scale < MAX_SCALE)  { //zoom in
-        zoom_scale ++
+        zoom_scale ++;
     };
 
     Cell.height = Math.round(DEFAULT_CANVAS_HEIGHT*(zoom_scale/DEFAULT_ZOOM));
@@ -590,58 +630,94 @@ function select_cell_at(x, y) {
 
 function handle_key_press(key_key) {
     //If they user has pressed a movement key (currently only WASD supported), then try to move the active cell
-    let dir, target_row, target_col, add_to_queue;
+    let dir, target_row, target_col;
     
-    add_to_queue = true;
+    
     if ((key_key == 'W' || key_key == 'w') && active_cell[0] > 0) {
-        dir = 'up'
         target_row = active_cell[0] - 1
         target_col = active_cell[1]
+        add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'up')
     //} else if ((key_key == 'A' || key_key == 'a' || key_key == 37) && active_cell[1] > 0) { // left
     } else if ((key_key == 'A' || key_key == 'a') && active_cell[1] > 0) { // left
-        dir = 'left'
         target_row = active_cell[0]
         target_col = active_cell[1] - 1
+        add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'left')
     } else if ((key_key == 'S' || key_key == 's') && active_cell[0] < game.num_rows - 1) { // down
-        dir = 'down'
         target_row = active_cell[0] + 1
         target_col = active_cell[1]
+        add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'down')
     } else if ((key_key == 'D' || key_key == 'd') && active_cell[1] < game.num_cols - 1) { // right
-        dir = 'right'
         target_row = active_cell[0]
         target_col = active_cell[1] + 1
+        add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'right')
     } else {
-        add_to_queue = false;
-        
-        if (key_key == 'Q' || key_key == 'q') { //undo all queued moves
-            queued_moves.length = 0 // empty the queue list. Do not bother updating active cell location
-
-        } else if (key_key == 'E' || key_key == 'e') { //undo last queued move and return active cell to it
-            if (queued_moves.length > 0) {
-                let popped = queued_moves.pop();
-                
-                active_cell[0] = popped.row;
-                active_cell[1] = popped.col;
-                
-                render_board();
-            }
+        if (key_key == 'Q' || key_key == 'q') { 
+            cancel_queue()
+            
+        } else if (key_key == 'E' || key_key == 'e') {
+            undo_queued_move(); //undo last queued move and return active cell to it
+            
         }
-    };
-    
-    if (add_to_queue) {
-        queued_moves.push({'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}) //TODO owner = 0 is a stand-in for the user, for now
-        
-        if (move_mode == 2) {move_mode = 0} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
-
-        // Update the active/highlighted cell to match the new target
-        active_cell[0] = target_row
-        active_cell[1] = target_col
-        
-        render_board();
     };
 }
 
-// Adapted from https://www.w3schools.com/howto/howto_js_draggable.asp
+function cancel_queue() { //undo all queued moves
+    server_receives_cancel_queue(local_player_id)
+    local_move_queue.length = 0 // empty the queue list. Do not bother updating active cell location
+    render_board();
+}
+
+
+function server_receives_new_queued_moved(player_id, new_move) {
+    game.players[player_id].queued_moves.push(new_move)
+}
+
+function server_receives_undo_queued_move(player_id, popped_item_id) {
+    // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
+    var not_caught_up = true;
+    while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
+        if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
+            game.players[player_id].queued_moves.pop();
+        } else { not_caught_up = false; } //escape 
+    };
+
+}
+
+function server_receives_cancel_queue(player_id) {
+    game.players[player_id].queued_moves.length = 0;
+}
+
+
+function undo_queued_move() { //undo last queued move and return active cell to it
+    if (local_move_queue.length > 0) {
+        let popped = local_move_queue.pop();
+        
+        active_cell[0] = popped.row;
+        active_cell[1] = popped.col;
+        
+        server_receives_undo_queued_move(local_player_id, popped.id)
+
+        render_board();
+    }
+}
+
+function add_to_queue(source_row, source_col, target_row, target_col, dir) {
+    local_queued_move_counter ++;
+    var new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
+    
+    server_receives_new_queued_moved(local_player_id, new_move)
+    local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
+    
+    if (move_mode == 2) {move_mode = 0} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
+
+    // Update the active/highlighted cell to match the new target
+    active_cell[0] = target_row
+    active_cell[1] = target_col
+    
+    render_board();
+
+}
+// Adapted from https://www.w3schools.com/howto/howto_js_draggable.asp, but my version's even cooler
 function drag_canvas_event_handler(canvas_element) {
     var x_dest = 0, y_dest = 0, x_origin = 0, y_origin = 0;
     var mousedown_timer = null; // delay drag until the mouse has been briefly held down, to avoid accidental dragging during normal play
@@ -685,7 +761,6 @@ function drag_canvas_event_handler(canvas_element) {
     }
 }
 
-
 function should_be_visible(cell, player_id) {
     if (!game.fog_of_war) {
         return true;
@@ -700,45 +775,41 @@ function should_be_visible(cell, player_id) {
 function get_owned_neighbors(cell, player_id) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
     var num_neighbors = 0;
 
-    if (cell.row > 0 && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner == player_id) ? 1 : 0; }; // top left
-    if (cell.row > 0) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner == player_id) ? 1 : 0; }; // top
-    if (cell.row > 0 && cell.col < game.num_cols - 1) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner == player_id) ? 1 : 0; }; // top right
-    if (cell.col < game.num_cols - 1) { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner == player_id) ? 1 : 0; }; // right
-    if ((cell.row < game.num_rows - 1) && cell.col < (game.num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner == player_id) ? 1 : 0; }; // bottom right
-    if (cell.row < game.num_rows - 1) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner == player_id) ? 1 : 0; }; // bottom
-    if ((cell.row < game.num_rows - 1) && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner == player_id) ? 1 : 0; }; // bottom left
-    if (cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner == player_id) ? 1 : 0; }; // left
+    if (cell.row > 0 && cell.col > 0)                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner == player_id) ? 1 : 0; }; // top left
+    if (cell.row > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner == player_id) ? 1 : 0; }; // top
+    if (cell.row > 0 && cell.col < game.num_cols - 1)                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner == player_id) ? 1 : 0; }; // top right
+    if (cell.col < game.num_cols - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner == player_id) ? 1 : 0; }; // right
+    if ((cell.row < game.num_rows - 1) && cell.col < (game.num_cols - 1))   { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner == player_id) ? 1 : 0; }; // bottom right
+    if (cell.row < game.num_rows - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner == player_id) ? 1 : 0; }; // bottom
+    if ((cell.row < game.num_rows - 1) && cell.col > 0)                     { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner == player_id) ? 1 : 0; }; // bottom left
+    if (cell.col > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner == player_id) ? 1 : 0; }; // left
         
     return num_neighbors
 }
 
-
 //An attempt at predicting what the server to client communication will look like
 function send_game_state() {
     var player_id = 0;
+    
+    var next_queue_id = game.players[0].queued_moves.length > 0 ? game.players[0].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn
 
     // Start with header information about the game
     let game_string = '{ "game": {' +
         `"state" : "${game_on}",` +
-        `"turn": "${game_tick}",` +
+        `"turn": "${game_tick_server}",` +
         `"row_count": "${game.num_rows}",` +
-        `"col_count": "${game.num_cols}"` +
+        `"col_count": "${game.num_cols}",` +
+        `"next_queue_id": "${next_queue_id}"` +
         '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
 
     // Then loop through and add info about each visible cell
     game.cells.forEach(cell => {
-        //if (cell.id % 50 == 0) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations
-        //if (cell.owner != null) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations
-        
-        //if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) {
         if (should_be_visible(cell, player_id)) {
-        //if (true) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations        
             let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
             if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
             if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
             if (cell.entity != null) {cell_string += `, "entity":${cell.entity}`}
             if (cell.troops != null) {cell_string += `, "troops":${cell.troops}`}
-            //if (Math.random() > .05) {cell_string += `, "visible":true`}
             if (true) {cell_string += `, "visible":true`}
    
             cell_string += '}, '
@@ -753,13 +824,16 @@ function send_game_state() {
     
     // console.log(game_string);    
     // console.log(game_json.game.row_count);
-    update_board_with_json(json_obj)
+    client_receives_game_state_here(json_obj)
     
 }
 
-function update_board_with_json(json) {
+function client_receives_game_state_here(json) {
     //console.log('Attempting a new way of rendering')
     
+    game_tick_local = json.game.turn // update the turn count
+    
+    // Update the board to contain only info the player should currently be able to see
     cells_client.forEach(cell => {
         cell.owner = null;
         cell.troops = 0;
@@ -776,5 +850,22 @@ function update_board_with_json(json) {
         if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
         if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
     });
+
+    
+    // Update the local move queue - if one or more moves has been removed by the server, remove them from the front of the local queue
+    let new_min_queue_id = json.game.next_queue_id
+
+    if (new_min_queue_id == '-1') {
+        //console.log('got here')
+        local_move_queue.length = 0;
+    } else {
+        var not_caught_up = true;
+        while (local_move_queue.length>0 && not_caught_up) {
+            if (local_move_queue[0].id < new_min_queue_id) {
+                local_move_queue.shift();
+            } else { not_caught_up = false; } //escape 
+        };
+    }
+    
 }
 
