@@ -49,6 +49,7 @@ class Cell
     static dead_color_stroke = '#666666'
     static mountain_color = '#BBBBBB'
     static swamp_color = '#0E735A'
+    static high_tide_color = '#0E306C'
             
     constructor(context, id, row, col) {
         this.context = context; // the context of the canvas we'll be drawing to
@@ -61,35 +62,41 @@ class Cell
         this.troops = 0
         this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
         this.entity = null // what type of entity (if any) is here - eg admiral
+        this.visible = false // can the user view this cell at the moment? If not, it should be blackened out
 
     }   
 
     draw_cell() {
         //First draw a grid around the cell
-        
-        if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
-            this.context.fillStyle = Cell.mountain_color            
-            this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
-        } else if (this.terrain == TERRAIN_TYPE_SWAMP) {
-            this.context.fillStyle = Cell.swamp_color            
-            this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
-        }
-        
         //Draw outline around the cell
         this.context.strokeStyle = Cell.alive_color;
         this.context.lineWidth = 1;
         this.context.strokeRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
         
-        // If there is an admiral here, draw a star to represent it
-        if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
-            this.draw_star()
+        if (this.visible) {
+            if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
+                this.context.fillStyle = Cell.mountain_color            
+                this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
+            } else if (this.terrain == TERRAIN_TYPE_SWAMP) {
+                this.context.fillStyle = Cell.swamp_color            
+                this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
+            } else {
+                this.context.fillStyle = Cell.high_tide_color            
+                this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
+                
+            }
             
-        } else if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
-            this.draw_circle()
-        } 
 
-        this.draw_troops()
+            // If there is an admiral here, draw a star to represent it
+            if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
+                this.draw_star()
+                
+            } else if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
+                this.draw_circle()
+            } 
 
+            this.draw_troops()
+        }
     }
 
     draw_circle() {
@@ -373,7 +380,8 @@ function create_client_cells(num_rows, num_cols) { // in the future this will on
 }
 
 function render_board() {    
-    context.fillStyle='#0E306C'  // High Tide Blue '#DDDDDD' // grey
+    //context.fillStyle='#0E306C'  // High Tide Blue '#DDDDDD' // grey
+    context.fillStyle='#222222'  // High Tide Blue '#DDDDDD' // grey
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
     // Draw each gridline and object on the canvas
@@ -668,6 +676,16 @@ function drag_canvas_event_handler(canvas_element) {
     }
 }
 
+function should_be_visible(cell, player_id) {
+    if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) { 
+        return true; 
+    } else if (true){
+        console.log('todo add check on neighbors')
+        return false; //TODO here change this to true to reveal all cells, and false to hide all cells that aren't owned by the player or contain mountains
+    }
+}
+
+
 //An attempt at predicting what the server to client communication will look like
 function send_game_state() {
     var player_id = 0;
@@ -684,12 +702,17 @@ function send_game_state() {
     cells_server.forEach(cell => {
         //if (cell.id % 50 == 0) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations
         //if (cell.owner != null) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations
-        if (true) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations        
+        
+        //if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) {
+        if (should_be_visible(cell, player_id)) {
+        //if (true) { //if cell is visible  -- for now assume all cells are always visible TEMP Testing limitations        
             let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
             if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
             if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
             if (cell.entity != null) {cell_string += `, "entity":${cell.entity}`}
             if (cell.troops != null) {cell_string += `, "troops":${cell.troops}`}
+            //if (Math.random() > .05) {cell_string += `, "visible":true`}
+            if (true) {cell_string += `, "visible":true`}
    
             cell_string += '}, '
             game_string += cell_string ;
@@ -715,6 +738,7 @@ function update_board_with_json(json) {
         cell.troops = 0;
         cell.entity = null;
         cell.terrain = null;
+        cell.visible = false;
     });
             
     json.board.forEach(new_cell => {
@@ -723,6 +747,7 @@ function update_board_with_json(json) {
         if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
         if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
         if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
+        if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
         
 
     });
