@@ -687,16 +687,15 @@ function should_be_visible(cell, player_id) {
     }
 }
 
-
 function get_owned_neighbors(cell, player_id) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
     var num_neighbors = 0;
 
     if (cell.row > 0 && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner == player_id) ? 1 : 0; }; // top left
     if (cell.row > 0) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner == player_id) ? 1 : 0; }; // top
-    if (cell.row > 0 && cell.col < (num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner == player_id) ? 1 : 0; }; // top right
-    if (cell.col < (num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner == player_id) ? 1 : 0; }; // right
+    if (cell.row > 0 && cell.col < num_cols - 1) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner == player_id) ? 1 : 0; }; // top right
+    if (cell.col < num_cols - 1) { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner == player_id) ? 1 : 0; }; // right
     if ((cell.row < num_rows - 1) && cell.col < (num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner == player_id) ? 1 : 0; }; // bottom right
-    if ((cell.row < num_rows - 1) && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner == player_id) ? 1 : 0; }; // bottom
+    if (cell.row < num_rows - 1) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner == player_id) ? 1 : 0; }; // bottom
     if ((cell.row < num_rows - 1) && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner == player_id) ? 1 : 0; }; // bottom left
     if (cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner == player_id) ? 1 : 0; }; // left
         
