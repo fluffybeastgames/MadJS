@@ -57,8 +57,6 @@ class Cell
         this.row = row;
         this.col = col;
         this.owner = null
-        this.alive = false //start with none alive and add starting config downstream
-        this.alive_next_turn = false
         this.troops = 0
         this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
         this.entity = null // what type of entity (if any) is here - eg admiral
@@ -262,6 +260,10 @@ function game_loop() {
         
     }
     setTimeout( () => { window.requestAnimationFrame(() => game_loop()); }, refresh_time) // therefore each game loop will last at least refresh_time ms
+}
+
+function get_cell_by_coords(row, col) { // Returns the cell object at the given row and column
+    return cells_server[row*num_cols+col]
 }
 
 function get_owner_color(owner) { // returns fill and stroke, respectively
@@ -676,13 +678,29 @@ function drag_canvas_event_handler(canvas_element) {
     }
 }
 
+
 function should_be_visible(cell, player_id) {
     if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) { 
         return true; 
     } else if (true){
-        console.log('todo add check on neighbors')
-        return false; //TODO here change this to true to reveal all cells, and false to hide all cells that aren't owned by the player or contain mountains
+        return (get_owned_neighbors(cell, player_id) > 0);
     }
+}
+
+
+function get_owned_neighbors(cell, player_id) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
+    var num_neighbors = 0;
+
+    if (cell.row > 0 && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner == player_id) ? 1 : 0; }; // top left
+    if (cell.row > 0) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner == player_id) ? 1 : 0; }; // top
+    if (cell.row > 0 && cell.col < (num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner == player_id) ? 1 : 0; }; // top right
+    if (cell.col < (num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner == player_id) ? 1 : 0; }; // right
+    if ((cell.row < num_rows - 1) && cell.col < (num_cols - 1)) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner == player_id) ? 1 : 0; }; // bottom right
+    if ((cell.row < num_rows - 1) && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner == player_id) ? 1 : 0; }; // bottom
+    if ((cell.row < num_rows - 1) && cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner == player_id) ? 1 : 0; }; // bottom left
+    if (cell.col > 0) { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner == player_id) ? 1 : 0; }; // left
+        
+    return num_neighbors
 }
 
 
@@ -731,7 +749,7 @@ function send_game_state() {
 }
 
 function update_board_with_json(json) {
-    console.log('Attempting a new way of rendering')
+    //console.log('Attempting a new way of rendering')
     
     cells_client.forEach(cell => {
         cell.owner = null;
@@ -742,16 +760,12 @@ function update_board_with_json(json) {
     });
             
     json.board.forEach(new_cell => {
-        console.log(new_cell.id, new_cell.row, new_cell.col)
+        // console.log(new_cell.id, new_cell.row, new_cell.col)
         if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
         if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
         if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
         if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
         if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
-        
-
     });
-
-
 }
 
