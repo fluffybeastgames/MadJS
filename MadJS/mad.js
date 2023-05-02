@@ -29,10 +29,10 @@ const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rend
 ///////////
 let tick_time = 500 // ms to wait before rendering each new frame
 let game_on; // when game_on, the game will loop every ~tick_time ms, increasing the game_tick and advancing the simulation
-let  game_tick_server;
+let game_tick_server;
 let last_starting_configuration;
 let game = null;
-let move_mode; //0 for normal/left click mode, 1 for move all/middle click mode, 2 for move half/right click mode
+let move_mode; // values are defined in the ACTION_MOVE_ constants
 
 const GAME_MODE_FFA = 1
 const GAME_MODE_FFA_CUST = 2
@@ -63,7 +63,13 @@ const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to ma
 const ENTITY_TYPE_INFANTRY = 205
 
 
+const ACTION_MOVE_NORMAL = 1
+const ACTION_MOVE_HALF = 2
+const ACTION_MOVE_ALL = 3
+const ACTION_MOVE_CITY = 4
+const ACTION_MOVE_NONE = 5
 
+    
 
 ///////////
 // Local App classes and functions
@@ -88,7 +94,7 @@ function init_client(){
         }
     }, false);
 
-    move_mode = 1
+    move_mode = ACTION_MOVE_NORMAL
 
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
     context = canvas.getContext('2d');
@@ -300,9 +306,9 @@ function highlight_active_cell() {
         if(cell.row == active_cell[0] && cell.col == active_cell[1]) {
             cell.context.lineWidth = 5;
             
-            if (move_mode == 0) { cell.context.strokeStyle = '#FFFFFF'; }
-            else if (move_mode == 1) { cell.context.strokeStyle = '#FF0000'; }
-            else if (move_mode == 2) { cell.context.strokeStyle = '#FFcc00'; }
+            if (move_mode == ACTION_MOVE_NORMAL) { cell.context.strokeStyle = '#FFFFFF'; }
+            else if (move_mode == ACTION_MOVE_ALL) { cell.context.strokeStyle = '#FF0000'; }
+            else if (move_mode == ACTION_MOVE_HALF) { cell.context.strokeStyle = '#FFcc00'; }
     
             cell.context.strokeRect(cell.col*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
             
@@ -322,17 +328,17 @@ function mouse_handler(event) {
     if (event.button == 0) { //left click
         let mousePos = getMousePos(canvas, event);
         select_cell_at(mousePos.x, mousePos.y);
-        move_mode = 0;
+        move_mode = ACTION_MOVE_NORMAL;
 
     } else if (event.button == 1) { // middle click
         let mousePos = getMousePos(canvas, event);
         select_cell_at(mousePos.x, mousePos.y);          
-        move_mode = 1; 
+        move_mode = ACTION_MOVE_ALL; 
 
     } else if (event.button == 2) { // right click 
         let mousePos = getMousePos(canvas, event);
         select_cell_at(mousePos.x, mousePos.y);         
-        move_mode = 2; 
+        move_mode = ACTION_MOVE_HALF; 
     };
 }
 
@@ -436,14 +442,56 @@ function undo_queued_move() { //undo last queued move and return active cell to 
     }
 }
 
+function weighted_choice(arr_options) {
+//Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
+    let total_weight = 0; 
+    arr_options.forEach(option => { total_weight += Math.max(option.weight,0) }); // sum up the individual weights to determine the scale of our randrange
+
+    let rand_weight = Math.random()*total_weight;
+
+    let traversed_weight = 0, arr_pos = -1;
+    while(traversed_weight < rand_weight && arr_pos < arr_options.length - 1) {
+        arr_pos++;
+        traversed_weight += arr_options[arr_pos].weight
+    }
+    return arr_options[arr_pos]
+
+}
+
+function test_weighted_choice() {
+    let num_tests = 10000;
+    let weighted_choice_data = [
+        {'value1':'value_0', 'other_val_1':'test', 'weight':0}, // 0 should never be selected
+        {'value1':'value_1', 'other_val_1':'test', 'weight':1},
+        {'value1':'value_2', 'other_val_1':'test', 'weight':2},
+        {'value1':'value_3', 'other_val_1':'test', 'weight':3},
+        {'value1':'value_4', 'other_val_1':'test', 'weight':4},
+        {'value1':'value_5', 'other_val_1':'test', 'weight':5},
+        {'value1':'value_6', 'other_val_1':'test', 'weight':6},
+        {'value1':'value_7', 'other_val_1':'test', 'weight':7},
+        {'value1':'value_8', 'other_val_1':'test', 'weight':8},
+        {'value1':'value_9', 'other_val_1':'test', 'weight':9}, // a weight of 9 should be selected ~9x as often as a weight of 1
+        {'value1':'value_10', 'other_val_1':'test', 'weight':-10}, // should default to 0
+    ];
+
+    let arr_results = new Array(11).fill(0);
+
+    for (let i = 0; i < num_tests; i++) {
+        let result = weighted_choice(weighted_choice_data)
+        arr_results[result.weight] ++
+    };
+    console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
+}
+      
+
 function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     local_queued_move_counter ++;
     let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
-    
+    //to do queuer: 0 assumes player is always player 0
     server_receives_new_queued_moved(local_player_id, new_move)
     local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
     
-    if (move_mode == 2) {move_mode = 0} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
+    if (move_mode == ACTION_MOVE_HALF) {move_mode = ACTION_MOVE_NORMAL} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
 
     // Update the active/highlighted cell to match the new target
     active_cell[0] = target_row
@@ -625,6 +673,22 @@ class CellServer {
         this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
         this.entity = null // what type of entity (if any) is here - eg admiral
     }   
+
+    neighbor(dir) { //returns the neighboring cell. If out of bounds, returns null
+        if(dir=='left' && this.col>0) { 
+            return game.cells[this.id-1]
+        } else if (dir=='right' && this.col < game.num_cols - 1) { 
+            return game.cells[this.id+1]
+        } else if (dir=='up' && this.row>0) { 
+            return game.cells[this.id - game.num_cols]
+        } else if (dir=='down' && this.row < game.num_rows - 1) { 
+            return game.cells[this.id + game.num_cols]
+        } else {
+            return null;
+        }
+
+        
+    }
 }
 
 class HumanPlayer {
@@ -634,6 +698,7 @@ class HumanPlayer {
         this.color = color //temp. green
         this.queued_moves = []
         this.is_human = true;
+        this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
     }
 }
 
@@ -644,12 +709,61 @@ class Bot {
         this.color = color
         this.queued_moves = []
         this.is_human = false;
+        this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
     }
 
     take_move() {
+        if (this.queued_moves.length < 1) {
+            this.grow()
+        }
+    }
+
+    grow() {
+        // pick a stack and move it to 
+        let potential_moves = [];
+        let neighbor_left, neighbor_right, neighbor_up, neighbor_down;
+        
+        game.cells.forEach(cell => {
+            if(cell.owner != this.owner && cell.troops > 1) {
+                neighbor_left = cell.neighbor('left');
+                neighbor_right = cell.neighbor('right');
+                neighbor_up = cell.neighbor('up');
+                neighbor_down = cell.neighbor('down');
+                
+                if(neighbor_left)   { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_left, 'dir':'left', 'weight': 1})};
+                if(neighbor_right)  { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_right, 'dir':'right', 'weight': 1})};
+                if(neighbor_up)     { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_up, 'dir':'up', 'weight': 10})};
+                if(neighbor_down)   { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_down, 'dir':'down', 'weight': 5})};
+            };
+        });
+
+        let num_moves_to_queue = Math.min(potential_moves.length, 1);
+
+        for (let i = 0; i < num_moves_to_queue; i++) {
+            let result = weighted_choice(potential_moves)
+            console.log(result)
+            let row = result.source_cell.row
+            let col = result.source_cell.col
+            let target_row = result.target_cell.row
+            let target_col = result.target_cell.col
+            
+            let new_move = {'id':-1, 'row':row, 'col':col, 'dir':result.dir, 
+                            'queuer':this.uid,'target_row':target_row, 'target_col':target_col, 'action':result.move_mode}
+            game.players[this.uid].queued_moves.push(new_move);
+        };
+
 
     }
+
 }
+
+
+// function server_receives_new_queued_moved(player_id, new_move) {
+//     game.players[player_id].queued_moves.push(new_move);
+// }
+// let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
+//     //to do queuer: 0 assumes player is always player 0
+//     server_receives_new_queued_moved(local_player_id, new_move)
 
 function update_game() { // advance game by 1 tick
     if (game_on) {
@@ -671,8 +785,19 @@ function update_game() { // advance game by 1 tick
             }
         });
 
+
+        // Queue up bot behaviors
         game.players.forEach(player => {
-            //Process the queue. Note that this currently always goes in the same order - we want to flip flop this order every turn
+            if (!player.is_human) {
+                //console.log('bot')
+                player.take_move()
+            }
+
+        });        
+
+
+        //Process the queue. Note that this currently always goes in the same order - we want to flip flop this order every turn
+        game.players.forEach(player => {
             let valid_move = false
             let move, troops_to_move;
             while (!valid_move && player.queued_moves.length>0) {
@@ -692,9 +817,9 @@ function update_game() { // advance game by 1 tick
                     } else {
                         valid_move = true
 
-                        if (move.action == 0) { //left click
+                        if (move.action == ACTION_MOVE_NORMAL) { 
                             troops_to_move =  game.cells[cell_id_source].troops - 1 ;
-                        } else if (move.action == 1) { // middle click
+                        } else if (move.action == ACTION_MOVE_ALL) { 
                             if (game.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL) {
                                 troops_to_move = game.cells[cell_id_source].troops;
                             } else {troops_to_move = game.cells[cell_id_source].troops - 1;}
@@ -731,10 +856,10 @@ function update_game() { // advance game by 1 tick
 }
 
 function init_server() {
-    let n_rows = 8 + Math.floor(Math.random()*20) 
-    let n_cols = 8 + Math.floor(Math.random()*30)
+    let n_rows = 10 + Math.floor(Math.random()*18) 
+    let n_cols = 12 + Math.floor(Math.random()*30)
 
-    let fog_of_war = true;
+    let fog_of_war = false;
 
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', '#0a5a07')
@@ -775,7 +900,7 @@ function spawn_terrain() {
             } else if (cell_code < .3) {
                 cell.terrain = TERRAIN_TYPE_SWAMP;
             };   
-        }
+        };
     });
 }
 
@@ -789,7 +914,7 @@ function server_receives_undo_queued_move(player_id, popped_item_id) {
     while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
         if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
             game.players[player_id].queued_moves.pop();
-        } else { not_caught_up = false; } //escape 
+        } else { not_caught_up = false; }; //escape 
     };
 }
 
@@ -800,7 +925,6 @@ function server_receives_cancel_queue(player_id) {
 function should_be_visible(cell, player_id) {
     if (!game.fog_of_war) {
         return true;
-
     } else if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) { 
         return true; 
     } else if (true){
@@ -811,14 +935,14 @@ function should_be_visible(cell, player_id) {
 function get_owned_neighbors(cell, player_id) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
     let num_neighbors = 0;
 
-    if (cell.row > 0 && cell.col > 0)                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner == player_id) ? 1 : 0; }; // top left
-    if (cell.row > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner == player_id) ? 1 : 0; }; // top
-    if (cell.row > 0 && cell.col < game.num_cols - 1)                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner == player_id) ? 1 : 0; }; // top right
-    if (cell.col < game.num_cols - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner == player_id) ? 1 : 0; }; // right
-    if ((cell.row < game.num_rows - 1) && cell.col < (game.num_cols - 1))   { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner == player_id) ? 1 : 0; }; // bottom right
-    if (cell.row < game.num_rows - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner == player_id) ? 1 : 0; }; // bottom
-    if ((cell.row < game.num_rows - 1) && cell.col > 0)                     { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner == player_id) ? 1 : 0; }; // bottom left
-    if (cell.col > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner == player_id) ? 1 : 0; }; // left
+    if (cell.row > 0 && cell.col > 0)                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner    == player_id) ? 1 : 0; }; // top left
+    if (cell.row > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner      == player_id) ? 1 : 0; }; // top
+    if (cell.row > 0 && cell.col < game.num_cols - 1)                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner    == player_id) ? 1 : 0; }; // top right
+    if (cell.col < game.num_cols - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner      == player_id) ? 1 : 0; }; // right
+    if ((cell.row < game.num_rows - 1) && cell.col < (game.num_cols - 1))   { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner    == player_id) ? 1 : 0; }; // bottom right
+    if (cell.row < game.num_rows - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner      == player_id) ? 1 : 0; }; // bottom
+    if ((cell.row < game.num_rows - 1) && cell.col > 0)                     { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner    == player_id) ? 1 : 0; }; // bottom left
+    if (cell.col > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner      == player_id) ? 1 : 0; }; // left
         
     return num_neighbors
 }
@@ -831,7 +955,7 @@ function get_cell_by_coords(row, col) { // Returns the server cell object at the
 function send_game_state() {
     let player_id = 0;
     
-    let next_queue_id = game.players[0].queued_moves.length > 0 ? game.players[0].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn
+    let next_queue_id = game.players[0].queued_moves.length > 0 ? game.players[0].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
 
     // Start with header information about the game
     let game_string = '{ "game": {' +
