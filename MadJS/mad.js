@@ -6,11 +6,11 @@
 let canvas, context; // the canvas and context we will draw the game cells on
 const cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
 let  game_tick_local;
-var local_player_id = 0 // TODO temp syntax - don't want this hardcoded
+let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
 const valid_key_presses = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q'] //, 37]
-var local_move_queue = [];
-var local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
+const local_move_queue = [];
+let local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 15;
@@ -20,28 +20,23 @@ let zoom_scale = DEFAULT_ZOOM; // for scroll wheel zooming
 const DEFAULT_CANVAS_WIDTH = 50
 const DEFAULT_CANVAS_HEIGHT = 50
 const DEFAULT_FONT_SIZE = 18
-var font_size = DEFAULT_FONT_SIZE;
+let font_size = DEFAULT_FONT_SIZE;
 
-
-// class FrontApp {
-
-// }
-// var local_app = new FrontApp();
+const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rendering. Due to how setTimeout works, may be up to 16 ms late
 
 ///////////
 // Server constants and global variables
 ///////////
-const refresh_time = 500 // ms to wait before rendering each new frame
-let game_on; // when game_on, the game will loop every ~refresh_time ms, increasing the game_tick and advancing the simulation
+let tick_time = 500 // ms to wait before rendering each new frame
+let game_on; // when game_on, the game will loop every ~tick_time ms, increasing the game_tick and advancing the simulation
 let  game_tick_server;
 let last_starting_configuration;
-var game = null;
+let game = null;
 let move_mode; //0 for normal/left click mode, 1 for move all/middle click mode, 2 for move half/right click mode
 
 const GAME_MODE_FFA = 1
 const GAME_MODE_FFA_CUST = 2
 const GAME_MODE_REPLAY = 3
-
 
 const GAME_STATUS_INIT = 0 // loading
 const GAME_STATUS_READY = 1 // able to start
@@ -74,12 +69,18 @@ const ENTITY_TYPE_INFANTRY = 205
 // Local App classes and functions
 ///////////
 
+function game_loop_client() {
+    if (true) {
+        render_board(); // Redraw the game canvas        
+    }
+    setTimeout( () => { window.requestAnimationFrame(() => game_loop_client()); }, RENDER_REFRESH_TIME) // therefore each game loop will last at least tick_time ms    
+}
+
 //game init on server, event handlers on client side, canvas/context def on client
 function init_client(){
     console.log('Initializing a Madmirals instance')
     
-    init_game_server_version() //TODO temp setup
-        
+    init_server()
     // Add event listener on keydown
     document.addEventListener('keydown', (event) => {
         if (valid_key_presses.includes(event.key)) {
@@ -92,8 +93,8 @@ function init_client(){
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
     context = canvas.getContext('2d');
 
-    canvas.height = Cell.height*game.num_rows // canvas width must match cols*col_size
-    canvas.width = Cell.width*game.num_cols // canvas width must match cols*col_size
+    canvas.height = CellClient.height*game.num_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game.num_cols // canvas width must match cols*col_size
 
     canvas.addEventListener('mousedown', function (event) { mouse_handler(event) }, false); //our main click handler function
     canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
@@ -104,8 +105,157 @@ function init_client(){
     create_client_cells(game.num_rows, game.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
     
-    window.requestAnimationFrame(() => game_loop()); // start the game loop
+    window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
+
+class CellClient {
+    static width = DEFAULT_CANVAS_WIDTH;
+    static height = DEFAULT_CANVAS_HEIGHT;
+    static grid_color = '#bb00ff'
+    static mountain_color = '#BBBBBB'
+    static swamp_color = '#0E735A'
+    static high_tide_color = '#0E306C'
+            
+    constructor(context, id, row, col) {
+        this.context = context; // the context of the canvas we'll be drawing to
+        this.id = id //position w/in the 1d array of cells
+        this.row = row;
+        this.col = col;
+        this.owner = null
+        this.troops = 0
+        this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
+        this.entity = null // what type of entity (if any) is here - eg admiral
+        this.visible = false // can the user view this cell at the moment? If not, it should be blackened out
+    }   
+
+    draw_cell() {
+        //First draw a grid around the cell
+        //Draw outline around the cell
+        this.context.strokeStyle = CellClient.grid_color;
+        this.context.lineWidth = 1;
+        this.context.strokeRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
+        
+        if (this.visible) {
+            if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
+                this.context.fillStyle = CellClient.mountain_color            
+                this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
+            } else if (this.terrain == TERRAIN_TYPE_SWAMP) {
+                this.context.fillStyle = CellClient.swamp_color            
+                this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
+            } else {
+                this.context.fillStyle = CellClient.high_tide_color            
+                this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)    
+            }
+            
+            // If there is an admiral here, draw a star to represent it
+            if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
+                this.draw_star()
+                
+            } else if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
+                this.draw_circle()
+            } 
+
+            this.draw_troops()
+        }
+    }
+
+    draw_circle() {
+        this.context.beginPath()
+        // Draw the circle containing the cell, its remains, or nothing
+        let x, y, radius;
+        x = this.col*CellClient.width + CellClient.width/2;
+        y = this.row*CellClient.height + CellClient.height/2;
+        radius = CellClient.width/2 - 1;
+
+        this.context.beginPath();
+        this.context.arc(x, y, radius, 0, 2 * Math.PI, false);
+        this.context.fillStyle = game.players[this.owner].color;
+        this.context.fill(); // apply the solid color
+    
+    }
+
+    draw_star() { // Draws a 5-pointed star within the bounds of the cell, representing an Admiral cell
+    // Credit to https://stackoverflow.com/a/45140101
+        let num_points = 5
+        let inset = .5
+        let x = this.col*CellClient.width + CellClient.width/2;
+        let y = this.row*CellClient.height + CellClient.height/2;
+        let radius = CellClient.width/2;
+
+            this.context.save();
+            this.context.fillStyle = game.players[this.owner].color;
+            this.context.beginPath();
+            this.context.translate(x, y);
+            this.context.moveTo(0, 0-radius);
+            for (let i = 0; i < num_points; i++) {
+                this.context.rotate(Math.PI / num_points);
+                this.context.lineTo(0, 0 - (radius*inset));
+                this.context.rotate(Math.PI / num_points);
+                this.context.lineTo(0, 0 - radius);
+            }
+            this.context.closePath();
+            this.context.fill();
+            this.context.restore();
+    }
+    
+    draw_troops() {
+        let x = this.col*CellClient.width + CellClient.width/2;
+        let y = this.row*CellClient.height + CellClient.height/2;
+        // Add the number of troops (if any)
+        if (this.troops != 0) {
+            this.context.font = `${font_size}px Comic Sans MS`;
+            this.context.fillStyle = '#FFFFFF';
+            this.context.textBaseline = 'middle';
+            this.context.textAlign = 'center';
+            this.context.fillText(this.troops, x, y, CellClient.width); //limit the width to the size of the cell, squeezing text if need be
+        }
+        
+    }
+
+    draw_arrow(dir) { // Draw an arrow over the cell to indicate a queued move
+        this.context.beginPath();
+        let x_origin, y_start, x_dest, y_dest;
+        const strokeWidth = 2;
+
+        x_origin = this.col*CellClient.width + CellClient.width/2;
+        y_start = this.row*CellClient.height + CellClient.height/2;
+        
+        if (dir == 'up') {
+            x_dest=x_origin
+            y_dest=y_start - CellClient.height/2;
+        } else if (dir == 'down') {
+            x_dest=x_origin;
+            y_dest=y_start + CellClient.height/2;
+        } else if (dir == 'left') {
+            x_dest=x_origin - CellClient.width/2;
+            y_dest=y_start;
+        } else if (dir == 'right') {
+            x_dest=x_origin+CellClient.width/2;
+            y_dest=y_start;
+        } else 
+        
+        // this.context.beginPath();
+        this.context.lineWidth = 1; //for some reason this needs to be called both before and after drawing the line, or the arrows won't render correctly
+        this.context.strokeStyle = '#FFFFFF';
+        this.context.strokeWidth = strokeWidth
+        this.context.stroke();
+        
+        // Inspired by / adapted from https://stackoverflow.com/a/6333775 :
+        let arrow_head_length = CellClient.width/7; // length of arrow head in pixels
+        let dx = x_dest - x_origin;
+        let dy = y_dest - y_start;
+        let angle = Math.atan2(dy, dx);
+        this.context.moveTo(x_origin, y_start);
+        this.context.lineTo(x_dest, y_dest);
+        this.context.lineTo(x_dest - arrow_head_length * Math.cos(angle - Math.PI / 6), y_dest - arrow_head_length * Math.sin(angle - Math.PI / 6));
+        this.context.moveTo(x_dest, y_dest);
+        this.context.lineTo(x_dest - arrow_head_length * Math.cos(angle + Math.PI / 6), y_dest - arrow_head_length * Math.sin(angle + Math.PI / 6));
+        this.context.lineWidth = 1; //for some reason this needs to be called both before and after drawing the line, or the arrows won't render correctly
+        this.context.strokeStyle = '#FFFFFF';
+        this.context.strokeWidth = strokeWidth
+        this.context.stroke();
+    }
+};
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
     console.log('creating client cell grid')
@@ -114,7 +264,7 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
     id = 0
     for(let r = 0; r < n_rows; r++) {
         for(let c = 0; c < n_cols; c++) {
-            cells_client.push(new Cell(context, id, r, c));
+            cells_client.push(new CellClient(context, id, r, c));
             id++;
         }
     }
@@ -154,14 +304,14 @@ function highlight_active_cell() {
             else if (move_mode == 1) { cell.context.strokeStyle = '#FF0000'; }
             else if (move_mode == 2) { cell.context.strokeStyle = '#FFcc00'; }
     
-            cell.context.strokeRect(cell.col*Cell.width, cell.row*Cell.height, Cell.width, Cell.height);
+            cell.context.strokeRect(cell.col*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
             
             // Slightly darken the cells around the active cell to highlight its location
             context.fillStyle = "rgba(0, 0, 0, 0.2)";
-            cell.context.fillRect((cell.col-1)*Cell.width, cell.row*Cell.height, Cell.width, Cell.height);
-            cell.context.fillRect((cell.col+1)*Cell.width, cell.row*Cell.height, Cell.width, Cell.height);
-            cell.context.fillRect((cell.col)*Cell.width, (cell.row-1)*Cell.height, Cell.width, Cell.height);
-            cell.context.fillRect((cell.col)*Cell.width, (cell.row+1)*Cell.height, Cell.width, Cell.height);
+            cell.context.fillRect((cell.col-1)*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
+            cell.context.fillRect((cell.col+1)*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
+            cell.context.fillRect((cell.col)*CellClient.width, (cell.row-1)*CellClient.height, CellClient.width, CellClient.height);
+            cell.context.fillRect((cell.col)*CellClient.width, (cell.row+1)*CellClient.height, CellClient.width, CellClient.height);
         }
     }); 
 }
@@ -170,17 +320,17 @@ function mouse_handler(event) {
     event.preventDefault() // prevent default mouse behavior, mainly preventing middle click from activating scroll mode
         
     if (event.button == 0) { //left click
-        var mousePos = getMousePos(canvas, event);
+        let mousePos = getMousePos(canvas, event);
         select_cell_at(mousePos.x, mousePos.y);
         move_mode = 0;
 
     } else if (event.button == 1) { // middle click
-        var mousePos = getMousePos(canvas, event);
+        let mousePos = getMousePos(canvas, event);
         select_cell_at(mousePos.x, mousePos.y);          
         move_mode = 1; 
 
     } else if (event.button == 2) { // right click 
-        var mousePos = getMousePos(canvas, event);
+        let mousePos = getMousePos(canvas, event);
         select_cell_at(mousePos.x, mousePos.y);         
         move_mode = 2; 
     };
@@ -197,21 +347,21 @@ function wheel_handler(event) {
         zoom_scale ++;
     };
 
-    Cell.height = Math.round(DEFAULT_CANVAS_HEIGHT*(zoom_scale/DEFAULT_ZOOM));
-    Cell.width = Math.round(DEFAULT_CANVAS_WIDTH*(zoom_scale/DEFAULT_ZOOM));
+    CellClient.height = Math.round(DEFAULT_CANVAS_HEIGHT*(zoom_scale/DEFAULT_ZOOM));
+    CellClient.width = Math.round(DEFAULT_CANVAS_WIDTH*(zoom_scale/DEFAULT_ZOOM));
     font_size = Math.round(DEFAULT_FONT_SIZE*(zoom_scale/DEFAULT_ZOOM));
 
-        // canvas.height = Cell.height*num_rows // canvas width must match cols*col_size
-    // canvas.width = Cell.width*num_cols // canvas width must match cols*col_size
-    canvas.width = Cell.width*game.num_cols;
-    canvas.height = Cell.height*game.num_rows;
+        // canvas.height = CellClient.height*num_rows // canvas width must match cols*col_size
+    // canvas.width = CellClient.width*num_cols // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game.num_cols;
+    canvas.height = CellClient.height*game.num_rows;
 
     render_board();
 }
 
 //Get Mouse Position
 function getMousePos(canvas, event) {
-    var rect = canvas.getBoundingClientRect();
+    let rect = canvas.getBoundingClientRect();
     return {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top
@@ -220,8 +370,8 @@ function getMousePos(canvas, event) {
 
 function select_cell_at(x, y) {
     let row, col, id;
-    row = Math.floor(y/Cell.height)
-    col = Math.floor(x/Cell.width)
+    row = Math.floor(y/CellClient.height)
+    col = Math.floor(x/CellClient.width)
     // console.log(`Selecting cell ${row},${col}`)
 
     active_cell[0] = row;
@@ -288,7 +438,7 @@ function undo_queued_move() { //undo last queued move and return active cell to 
 
 function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     local_queued_move_counter ++;
-    var new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
+    let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
     
     server_receives_new_queued_moved(local_player_id, new_move)
     local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
@@ -304,8 +454,8 @@ function add_to_queue(source_row, source_col, target_row, target_col, dir) {
 }
 // Adapted from https://www.w3schools.com/howto/howto_js_draggable.asp, but my version's even cooler
 function drag_canvas_event_handler(canvas_element) {
-    var x_dest = 0, y_dest = 0, x_origin = 0, y_origin = 0;
-    var mousedown_timer = null; // delay drag until the mouse has been briefly held down, to avoid accidental dragging during normal play
+    let x_dest = 0, y_dest = 0, x_origin = 0, y_origin = 0;
+    let mousedown_timer = null; // delay drag until the mouse has been briefly held down, to avoid accidental dragging during normal play
     canvas_element.onmousedown = mouse_down_on_canvas;
 
     function mouse_down_on_canvas(event) {
@@ -357,27 +507,28 @@ function toggle_pause() { //TODO remove this
 }
 
 function client_receives_game_state_here(json) {
-    //console.log('Attempting a new way of rendering')
-    
-    game_tick_local = json.game.turn // update the turn count
-    
-    // Update the board to contain only info the player should currently be able to see
-    cells_client.forEach(cell => {
-        cell.owner = null;
-        cell.troops = 0;
-        cell.entity = null;
-        cell.terrain = null;
-        cell.visible = false;
-    });
-            
-    json.board.forEach(new_cell => {
-        // console.log(new_cell.id, new_cell.row, new_cell.col)
-        if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
-        if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
-        if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
-        if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
-        if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
-    });
+    if (cells_client.length > 0) {    
+        //console.log('Attempting a new way of rendering')
+        
+        game_tick_local = json.game.turn // update the turn count
+        
+        // Update the board to contain only info the player should currently be able to see
+        cells_client.forEach(cell => {
+            cell.owner = null;
+            cell.troops = 0;
+            cell.entity = null;
+            cell.terrain = null;
+            cell.visible = false;
+        });
+                
+        json.board.forEach(new_cell => {
+            if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
+            if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
+            if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
+            if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
+            if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
+        });
+    } else {console.log('Not ready yet!')}
 
     
     // Update the local move queue - if one or more moves has been removed by the server, remove them from the front of the local queue
@@ -387,7 +538,7 @@ function client_receives_game_state_here(json) {
         //console.log('got here')
         local_move_queue.length = 0;
     } else {
-        var not_caught_up = true;
+        let not_caught_up = true;
         while (local_move_queue.length>0 && not_caught_up) {
             if (local_move_queue[0].id < new_min_queue_id) {
                 local_move_queue.shift();
@@ -408,9 +559,25 @@ function client_receives_game_state_here(json) {
 
 
 
+
+
+
+
+
+
 ///////////
 // Server classes and functions
 ///////////
+
+function game_loop_server() {
+    // console.log('tick')
+    if (game_on) {
+        game_tick_server++;
+        check_for_game_over();
+        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag                
+    }
+    setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, tick_time) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
+}
 
 class Game {
     constructor(n_rows, n_cols, fog_of_war) {
@@ -425,27 +592,39 @@ class Game {
     }
 
     add_human(session_id, color) {
-        var new_id = this.players.length
+        let new_id = this.players.length
         this.player_turn_order.push(new_id)
         this.players.push(new HumanPlayer(new_id, session_id, color))
     }
 
     add_bot(personality, color) {
-        var new_id = this.players.length
+        let new_id = this.players.length
         this.player_turn_order.push(new_id)
         this.players.push(new Bot(new_id, personality, color))
     }
     
     initialize_cells() {
-        var id = 0;
+        let id = 0;
         for(let r = 0; r < this.num_rows; r++) {
             for(let c = 0; c < this.num_cols; c++) {
-                this.cells.push(new Cell(context, id, r, c));
+                this.cells.push(new CellServer(context, id, r, c));
                 id++;;
             }
         }
     }
     
+}
+
+class CellServer {
+    constructor(context, id, row, col) {
+        this.id = id //position w/in the 1d array of cells
+        this.row = row;
+        this.col = col;
+        this.owner = null
+        this.troops = 0
+        this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
+        this.entity = null // what type of entity (if any) is here - eg admiral
+    }   
 }
 
 class HumanPlayer {
@@ -454,6 +633,7 @@ class HumanPlayer {
         this.session_id = session_id // the session ID of the connected player
         this.color = color //temp. green
         this.queued_moves = []
+        this.is_human = true;
     }
 }
 
@@ -463,6 +643,7 @@ class Bot {
         this.personality = personality
         this.color = color
         this.queued_moves = []
+        this.is_human = false;
     }
 
     take_move() {
@@ -492,7 +673,7 @@ function update_game() { // advance game by 1 tick
 
         game.players.forEach(player => {
             //Process the queue. Note that this currently always goes in the same order - we want to flip flop this order every turn
-            var valid_move = false
+            let valid_move = false
             let move, troops_to_move;
             while (!valid_move && player.queued_moves.length>0) {
                 move = player.queued_moves.shift();
@@ -549,7 +730,7 @@ function update_game() { // advance game by 1 tick
     }
 }
 
-function init_game_server_version() {
+function init_server() {
     let n_rows = 8 + Math.floor(Math.random()*20) 
     let n_cols = 8 + Math.floor(Math.random()*30)
 
@@ -566,13 +747,15 @@ function init_game_server_version() {
     
     game_tick_server = 0
     game_on = true; // start with the simulation running instead of paused
+    send_game_state();
+    game_loop_server()
 }
 
 function spawn_admirals(starting_troops) {
     for (let i = 0; i < game.players.length; i++) {
-        var not_found = true;
+        let not_found = true;
         while (not_found) {
-            var rand_cell = Math.floor(Math.random() * game.num_rows * game.num_cols);
+            let rand_cell = Math.floor(Math.random() * game.num_rows * game.num_cols);
             if (game.cells[rand_cell].owner == null) {
                 game.cells[rand_cell].owner = i;
                 game.cells[rand_cell].troops = starting_troops;
@@ -586,7 +769,7 @@ function spawn_admirals(starting_troops) {
 function spawn_terrain() {
     game.cells.forEach(cell => {
         if(cell.owner == null) {
-            var cell_code = Math.random();
+            let cell_code = Math.random();
             if (cell_code < .25) {
                 cell.terrain = TERRAIN_TYPE_MOUNTAIN;
             } else if (cell_code < .3) {
@@ -602,7 +785,7 @@ function server_receives_new_queued_moved(player_id, new_move) {
 
 function server_receives_undo_queued_move(player_id, popped_item_id) {
     // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
-    var not_caught_up = true;
+    let not_caught_up = true;
     while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
         if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
             game.players[player_id].queued_moves.pop();
@@ -626,7 +809,7 @@ function should_be_visible(cell, player_id) {
 }
 
 function get_owned_neighbors(cell, player_id) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
-    var num_neighbors = 0;
+    let num_neighbors = 0;
 
     if (cell.row > 0 && cell.col > 0)                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner == player_id) ? 1 : 0; }; // top left
     if (cell.row > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner == player_id) ? 1 : 0; }; // top
@@ -646,9 +829,9 @@ function get_cell_by_coords(row, col) { // Returns the server cell object at the
 
 //An attempt at predicting what the server to client communication will look like
 function send_game_state() {
-    var player_id = 0;
+    let player_id = 0;
     
-    var next_queue_id = game.players[0].queued_moves.length > 0 ? game.players[0].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn
+    let next_queue_id = game.players[0].queued_moves.length > 0 ? game.players[0].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn
 
     // Start with header information about the game
     let game_string = '{ "game": {' +
@@ -685,198 +868,6 @@ function send_game_state() {
     
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-///////////
-// NEED TO REFACTOR TO SPLIT CLIENT/SERVER CODE: 
-// -game_loop - remove render_board() from server version and create a separate game loop in client that just renders periodically 
-// -init 
-// -Cell - refactor this into 2 separate classes, 1 for server and 1 for client.. possibly have the client one inherit server version and then add rendery stuff
-// -check_for_game_over has you win and you lose alerts leftover from first version
-///////////
-
-function game_loop() {
-    if (game_on) {
-        game_tick_server++;
-        check_for_game_over();
-        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag        
-        render_board(); // Redraw the game canvas    ////TODO REFACTOR THIS OUT OF THIS LOOP
-        
-    }
-    setTimeout( () => { window.requestAnimationFrame(() => game_loop()); }, refresh_time) // therefore each game loop will last at least refresh_time ms
-}
-
-class Cell {
-    
-    static width = DEFAULT_CANVAS_WIDTH;
-    static height = DEFAULT_CANVAS_HEIGHT;
-    static grid_color = '#bb00ff'
-    static mountain_color = '#BBBBBB'
-    static swamp_color = '#0E735A'
-    static high_tide_color = '#0E306C'
-            
-    constructor(context, id, row, col) {
-        this.context = context; // the context of the canvas we'll be drawing to
-        this.id = id //position w/in the 1d array of cells
-        this.row = row;
-        this.col = col;
-        this.owner = null
-        this.troops = 0
-        this.terrain = TERRAIN_TYPE_WATER //water is traversable, mountains are not
-        this.entity = null // what type of entity (if any) is here - eg admiral
-        this.visible = false // can the user view this cell at the moment? If not, it should be blackened out
-
-    }   
-
-    draw_cell() {
-        //First draw a grid around the cell
-        //Draw outline around the cell
-        this.context.strokeStyle = Cell.grid_color;
-        this.context.lineWidth = 1;
-        this.context.strokeRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
-        
-        if (this.visible) {
-            if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
-                this.context.fillStyle = Cell.mountain_color            
-                this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
-            } else if (this.terrain == TERRAIN_TYPE_SWAMP) {
-                this.context.fillStyle = Cell.swamp_color            
-                this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
-            } else {
-                this.context.fillStyle = Cell.high_tide_color            
-                this.context.fillRect(this.col*Cell.width, this.row*Cell.height, Cell.width, Cell.height)
-                
-            }
-            
-
-            // If there is an admiral here, draw a star to represent it
-            if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
-                this.draw_star()
-                
-            } else if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
-                this.draw_circle()
-            } 
-
-            this.draw_troops()
-        }
-    }
-
-    draw_circle() {
-        this.context.beginPath()
-        // Draw the circle containing the cell, its remains, or nothing
-        let x, y, radius;
-        x = this.col*Cell.width + Cell.width/2;
-        y = this.row*Cell.height + Cell.height/2;
-        radius = Cell.width/2 - 1;
-
-        this.context.beginPath();
-        this.context.arc(x, y, radius, 0, 2 * Math.PI, false);
-        this.context.fillStyle = game.players[this.owner].color;
-        this.context.fill(); // apply the solid color
-    
-    }
-
-    draw_star() { // Draws a 5-pointed star within the bounds of the cell, representing an Admiral cell
-    // Credit to https://stackoverflow.com/a/45140101
-        var num_points = 5
-        var inset = .5
-        var x = this.col*Cell.width + Cell.width/2;
-        var y = this.row*Cell.height + Cell.height/2;
-        var radius = Cell.width/2;
-
-            this.context.save();
-            this.context.fillStyle = game.players[this.owner].color;
-            this.context.beginPath();
-            this.context.translate(x, y);
-            this.context.moveTo(0, 0-radius);
-            for (var i = 0; i < num_points; i++) {
-                this.context.rotate(Math.PI / num_points);
-                this.context.lineTo(0, 0 - (radius*inset));
-                this.context.rotate(Math.PI / num_points);
-                this.context.lineTo(0, 0 - radius);
-            }
-            this.context.closePath();
-            this.context.fill();
-            this.context.restore();
-    }
-    
-    draw_troops() {
-        var x = this.col*Cell.width + Cell.width/2;
-        var y = this.row*Cell.height + Cell.height/2;
-        // Add the number of troops (if any)
-        if (this.troops != 0) {
-            this.context.font = `${font_size}px Comic Sans MS`;
-            this.context.fillStyle = '#FFFFFF';
-            this.context.textBaseline = 'middle';
-            this.context.textAlign = 'center';
-            this.context.fillText(this.troops, x, y, Cell.width); //limit the width to the size of the cell, squeezing text if need be
-        }
-        
-    }
-    draw_arrow(dir) { // Draw an arrow over the cell to indicate a queued move
-        this.context.beginPath();
-        let x_origin, y_start, x_dest, y_dest;
-        const strokeWidth = 2;
-
-        x_origin = this.col*Cell.width + Cell.width/2;
-        y_start = this.row*Cell.height + Cell.height/2;
-        
-        if (dir == 'up') {
-            x_dest=x_origin
-            y_dest=y_start - Cell.height/2;
-        } else if (dir == 'down') {
-            x_dest=x_origin;
-            y_dest=y_start + Cell.height/2;
-        } else if (dir == 'left') {
-            x_dest=x_origin - Cell.width/2;
-            y_dest=y_start;
-        } else if (dir == 'right') {
-            x_dest=x_origin+Cell.width/2;
-            y_dest=y_start;
-        } else 
-        
-        // this.context.beginPath();
-        this.context.lineWidth = 1; //for some reason this needs to be called both before and after drawing the line, or the arrows won't render correctly
-        this.context.strokeStyle = '#FFFFFF';
-        this.context.strokeWidth = strokeWidth
-        this.context.stroke();
-        
-        // Inspired by / adapted from https://stackoverflow.com/a/6333775 :
-        var arrow_head_length = Cell.width/7; // length of arrow head in pixels
-        var dx = x_dest - x_origin;
-        var dy = y_dest - y_start;
-        var angle = Math.atan2(dy, dx);
-        this.context.moveTo(x_origin, y_start);
-        this.context.lineTo(x_dest, y_dest);
-        this.context.lineTo(x_dest - arrow_head_length * Math.cos(angle - Math.PI / 6), y_dest - arrow_head_length * Math.sin(angle - Math.PI / 6));
-        this.context.moveTo(x_dest, y_dest);
-        this.context.lineTo(x_dest - arrow_head_length * Math.cos(angle + Math.PI / 6), y_dest - arrow_head_length * Math.sin(angle + Math.PI / 6));
-        this.context.lineWidth = 1; //for some reason this needs to be called both before and after drawing the line, or the arrows won't render correctly
-        this.context.strokeStyle = '#FFFFFF';
-        this.context.strokeWidth = strokeWidth
-        this.context.stroke();
-    }
-};
-
-
 function check_for_game_over() {
     //if the game has been won, lost, or abandoned, mark it as such and alert the user
     
@@ -885,22 +876,28 @@ function check_for_game_over() {
     game.cells.forEach(cell => {
         if (cell.owner != null) {
             troop_count[cell.owner] += cell.troops;
-            if (cell.entity == ENTITY_TYPE_ADMIRAL) { admiral_count[cell.owner] ++ };            
+            if (cell.entity == ENTITY_TYPE_ADMIRAL) { 
+                admiral_count[cell.owner]++;
+            };            
         }
     });
+    
+    let remaining_humans_count = 0; // make sure at least 1 human player is still in the game
+    let remaining_bots_count = 0; // make sure at least 1 human player is still in the game
+    for (let i = 0; i < admiral_count.length; i++) {
+        if (admiral_count[i] > 0 && game.players[i].is_human) {
+            remaining_humans_count++;
+        } else if (admiral_count[i] > 0 && !game.players[i].is_human) {
+            remaining_bots_count++;
+        };
+    };
 
-    if (admiral_count[0] == 0) { // TODO refactor this - this is only valid in single player local mode
+    if (remaining_humans_count == 0) {
         game_on = false;
-        alert('Game over! You lose.'); 
-    } else {
-        const sum_admirals = admiral_count.reduce((partialSum, a) => partialSum + a, 0);
-        if (sum_admirals == admiral_count[0]) {
-            game_on = false;
-            alert('You win!'); 
-        }
-    }
+        console.log('Game over! Humans lose.'); // TODO pass this info on to the client
+    
+    } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
+        console.log(`Game over! Player (TBD) wins!!!`); // TODO pass this info on to the client
+    };
 }
-
-
-
 
