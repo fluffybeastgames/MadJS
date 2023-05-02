@@ -712,6 +712,22 @@ class Bot {
         this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
     }
 
+    admiral_count() {
+        let counter = 0;
+        game.cells.forEach(cell => {
+            if (cell.owner = this.uid && cell.entity == ENTITY_TYPE_ADMIRAL) {counter ++} 
+        });
+        return counter
+    }
+
+    cell_count() {
+        let counter = 0;
+        game.cells.forEach(cell => {
+            if (cell.owner == this.uid) {counter += cell.troops} 
+        });
+        return counter
+    }
+
     take_move() {
         if (this.queued_moves.length < 1) {
             this.grow()
@@ -719,51 +735,87 @@ class Bot {
     }
 
     grow() {
-        // pick a stack and move it to 
-        let potential_moves = [];
-        let neighbor_left, neighbor_right, neighbor_up, neighbor_down;
+        function eval_potential_move(cell, target, this_uid, cell_count) {        
+            //Evaluate the given situation and assign it a weight based on its suspected quality
+            let cell_ratio = cell.troops / cell_count;
+            if (target.terrain == TERRAIN_TYPE_MOUNTAIN) {return 0} // don't try to grow into mountains (not yet, anyway)            
+            if (cell.troops <= 1) {return 0} // don't try growing if you don't have any troops to spare
+            
+            let weight = 0
+            if (target.owner == this_uid) { weight += 1 }
+            if (target.owner == null) { weight += 15 }
+            if (target.owner != this_uid && target.troops < cell.troops + 1) { weight += 10 }
+            if (target.owner != this_uid && target.troops >= cell.troops + 1) { weight += 2 }
+            if (cell.terrain == TERRAIN_TYPE_SWAMP && target.terrain == TERRAIN_TYPE_WATER) { weight += 25 }
+            if (target.terrain == TERRAIN_TYPE_SWAMP) { weight -= 10 }
+            
+            // console.log(weight, cell.troops, cell_count, cell_ratio)
+            weight *=  cell_ratio
+            return Math.max(weight, 0);
+        };
         
+        let potential_moves = [];
+        let neighbor_left, neighbor_right, neighbor_up, neighbor_down, weight;
+        let cell_count = game.players[this.uid].cell_count();
+
+        let pm_id = 0; // a counter
+
         game.cells.forEach(cell => {
-            if(cell.owner != this.owner && cell.troops > 1) {
+            if(cell.owner == this.uid) {
                 neighbor_left = cell.neighbor('left');
                 neighbor_right = cell.neighbor('right');
                 neighbor_up = cell.neighbor('up');
                 neighbor_down = cell.neighbor('down');
                 
-                if(neighbor_left)   { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_left, 'dir':'left', 'weight': 1})};
-                if(neighbor_right)  { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_right, 'dir':'right', 'weight': 1})};
-                if(neighbor_up)     { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_up, 'dir':'up', 'weight': 10})};
-                if(neighbor_down)   { potential_moves.push({'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_down, 'dir':'down', 'weight': 5})};
+                if(neighbor_left)   { 
+                    weight = eval_potential_move(cell, neighbor_left, this.uid, cell_count);
+                    potential_moves.push({'id':pm_id++, 'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_left, 'dir':'left', 'weight': weight});
+                };
+                
+                if(neighbor_right)  { 
+                    weight = eval_potential_move(cell, neighbor_right, this.uid, cell_count);
+                    potential_moves.push({'id':pm_id++, 'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_right, 'dir':'right', 'weight': weight})
+                };
+                
+                if(neighbor_up)     { 
+                    weight = eval_potential_move(cell, neighbor_up, this.uid, cell_count);
+                    potential_moves.push({'id':pm_id++, 'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_up, 'dir':'up', 'weight': weight})
+                };
+                
+                if(neighbor_down)   { 
+                    weight = eval_potential_move(cell, neighbor_down, this.uid, cell_count);
+                    potential_moves.push({'id':pm_id++, 'move_mode':ACTION_MOVE_NORMAL, 'source_cell':cell, 'target_cell': neighbor_down, 'dir':'down', 'weight': weight})
+                };
             };
         });
 
-        let num_moves_to_queue = Math.min(potential_moves.length, 1);
+        let num_moves_to_queue = Math.floor(Math.random()*5+1); // queue up to this many moves at a time - compromise between performance and quick thinking of bot's part
+        num_moves_to_queue = Math.min(potential_moves.length, num_moves_to_queue);
 
         for (let i = 0; i < num_moves_to_queue; i++) {
-            let result = weighted_choice(potential_moves)
-            console.log(result)
-            let row = result.source_cell.row
-            let col = result.source_cell.col
-            let target_row = result.target_cell.row
-            let target_col = result.target_cell.col
-            
-            let new_move = {'id':-1, 'row':row, 'col':col, 'dir':result.dir, 
-                            'queuer':this.uid,'target_row':target_row, 'target_col':target_col, 'action':result.move_mode}
-            game.players[this.uid].queued_moves.push(new_move);
+            if (potential_moves.length > 0) {
+                let result = weighted_choice(potential_moves)
+
+                if (result) {
+                    // console.log(result)
+                    let row = result.source_cell.row
+                    let col = result.source_cell.col
+                    let target_row = result.target_cell.row
+                    let target_col = result.target_cell.col
+                    
+                    let new_move = {'id':-1, 'row':row, 'col':col, 'dir':result.dir, 
+                                    'queuer':this.uid,'target_row':target_row, 'target_col':target_col, 'action':result.move_mode}
+                    game.players[this.uid].queued_moves.push(new_move);
+
+                    //console.log(`tick: ${game_tick_server} move_id: ${result.id};  ${row}x${col} ${result.dir} to ${target_row}x${target_col}, queue: ${this.queued_moves.length}, winning weight ${result.weight} `)
+
+                    // Remove result from list of potential_moves for the remainder of the turn
+                    potential_moves = potential_moves.filter(item => item.cell !== result.cell)
+                };
+            }
         };
-
-
     }
-
 }
-
-
-// function server_receives_new_queued_moved(player_id, new_move) {
-//     game.players[player_id].queued_moves.push(new_move);
-// }
-// let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
-//     //to do queuer: 0 assumes player is always player 0
-//     server_receives_new_queued_moved(local_player_id, new_move)
 
 function update_game() { // advance game by 1 tick
     if (game_on) {
@@ -827,6 +879,8 @@ function update_game() { // advance game by 1 tick
                         } else { //right click
                             troops_to_move =  Math.floor(game.cells[cell_id_source].troops/2);
                         }                
+
+                        troops_to_move = Math.max(troops_to_move, 0); // I believe this will fix a bug where sometimes moving out of a swamp with 1 troop left would result in a neutral cell gaining +1 troops
                         
                         // If the queuer also owns the destination cell, stack their troops together
                         if (game.cells[cell_id_dest].owner == move.queuer) {
@@ -864,7 +918,7 @@ function init_server() {
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', '#0a5a07')
     game.add_bot('bot personality', '#E74856')
-    game.add_bot('bot personality', '#F9F1A5')
+    game.add_bot('bot personality', '#B9B165')
     game.add_bot('bot personality', '#881798')
 
     spawn_admirals(50); // the number of entities to create and the number of troops they start with
@@ -892,14 +946,15 @@ function spawn_admirals(starting_troops) {
 }
 
 function spawn_terrain() {
+    let arr_options = [
+        {'value': TERRAIN_TYPE_WATER, 'weight':80},
+        {'value': TERRAIN_TYPE_SWAMP, 'weight':5},
+        {'value': TERRAIN_TYPE_MOUNTAIN, 'weight':15},
+    ];
+
     game.cells.forEach(cell => {
         if(cell.owner == null) {
-            let cell_code = Math.random();
-            if (cell_code < .25) {
-                cell.terrain = TERRAIN_TYPE_MOUNTAIN;
-            } else if (cell_code < .3) {
-                cell.terrain = TERRAIN_TYPE_SWAMP;
-            };   
+            cell.terrain = weighted_choice(arr_options).value
         };
     });
 }
