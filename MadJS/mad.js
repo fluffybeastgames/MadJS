@@ -604,15 +604,6 @@ function client_receives_game_state_here(json) {
 
 
 
-
-
-
-
-
-
-
-
-
 ///////////
 // Server classes and functions
 ///////////
@@ -700,6 +691,24 @@ class HumanPlayer {
         this.is_human = true;
         this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
     }
+    
+    admiral_count() {
+        let counter = 0;
+        game.cells.forEach(cell => {
+            if (cell.owner == this.uid && cell.entity == ENTITY_TYPE_ADMIRAL) {counter ++} 
+        });
+        return counter
+    }
+
+    cell_count() {
+        let counter = 0;
+        game.cells.forEach(cell => {
+            if (cell.owner == this.uid) {counter += cell.troops} 
+        });
+        return counter
+    }
+
+    
 }
 
 class Bot {
@@ -715,7 +724,7 @@ class Bot {
     admiral_count() {
         let counter = 0;
         game.cells.forEach(cell => {
-            if (cell.owner = this.uid && cell.entity == ENTITY_TYPE_ADMIRAL) {counter ++} 
+            if (cell.owner == this.uid && cell.entity == ENTITY_TYPE_ADMIRAL) {counter ++} 
         });
         return counter
     }
@@ -737,7 +746,7 @@ class Bot {
     grow() {
         function eval_potential_move(cell, target, this_uid, cell_count) {        
             //Evaluate the given situation and assign it a weight based on its suspected quality
-            let cell_ratio = cell.troops / cell_count;
+            let cell_ratio = (cell.troops - target.troops)/ cell_count;
             if (target.terrain == TERRAIN_TYPE_MOUNTAIN) {return 0} // don't try to grow into mountains (not yet, anyway)            
             if (cell.troops <= 1) {return 0} // don't try growing if you don't have any troops to spare
             
@@ -747,7 +756,7 @@ class Bot {
             if (target.owner != this_uid && target.troops < cell.troops + 1) { weight += 10 }
             if (target.owner != this_uid && target.troops >= cell.troops + 1) { weight += 2 }
             if (cell.terrain == TERRAIN_TYPE_SWAMP && target.terrain == TERRAIN_TYPE_WATER) { weight += 25 }
-            if (target.terrain == TERRAIN_TYPE_SWAMP) { weight -= 10 }
+            if (target.terrain == TERRAIN_TYPE_SWAMP) { weight -= 15 }
             
             // console.log(weight, cell.troops, cell_count, cell_ratio)
             weight *=  cell_ratio
@@ -826,8 +835,7 @@ function update_game() { // advance game by 1 tick
                     cell.troops++;
                 } else if (cell.terrain == TERRAIN_TYPE_SWAMP && game_tick_server % 1 == 0) { // swamps drain every turn
                     cell.troops--;
-
-                    if (cell.troops < 0) {
+                    if (cell.troops < 0) { //check if the swamp killed off the last troops in the cell
                         cell.troops = 0;
                         cell.owner = null;
                     }
@@ -837,16 +845,13 @@ function update_game() { // advance game by 1 tick
             }
         });
 
-
         // Queue up bot behaviors
         game.players.forEach(player => {
             if (!player.is_human) {
                 //console.log('bot')
                 player.take_move()
             }
-
         });        
-
 
         //Process the queue. Note that this currently always goes in the same order - we want to flip flop this order every turn
         game.players.forEach(player => {
@@ -865,9 +870,9 @@ function update_game() { // advance game by 1 tick
                     
                     // Is it a valid destination?
                     if (game.cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
-                        valid_move = false
+                        valid_move = false;
                     } else {
-                        valid_move = true
+                        valid_move = true;
 
                         if (move.action == ACTION_MOVE_NORMAL) { 
                             troops_to_move =  game.cells[cell_id_source].troops - 1 ;
@@ -887,33 +892,54 @@ function update_game() { // advance game by 1 tick
                             game.cells[cell_id_dest].troops += troops_to_move;
                             
                         } else { // Otherwise invade the destination cell
-                            game.cells[cell_id_dest].troops -= troops_to_move
+                            game.cells[cell_id_dest].troops -= troops_to_move;
                             if (game.cells[cell_id_dest].troops < 0) {
+                                let old_owner = game.cells[cell_id_dest].owner;
+                                
                                 game.cells[cell_id_dest].troops *= -1;
                                 game.cells[cell_id_dest].owner = move.queuer;
-                            }
-                        }
+
+                                if (game.cells[cell_id_dest].entity == ENTITY_TYPE_ADMIRAL) {
+                                    attempt_takeover(old_owner, move.queuer);
+                                };
+                                
+                            };
+                        };
 
                         game.cells[cell_id_source].troops -= troops_to_move;
                         
                         if (game.cells[cell_id_source].troops <= 0) { 
                             game.cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
-                        }
-
-                    } 
-                }
-            }
+                        };
+                    } ;
+                };
+            };
         });
 
         send_game_state();
     }
 }
 
+function attempt_takeover(victim_id, culprit_id) {
+// When one player captures another's admiral, see if they nabbed their last one. If, so the player is out of the game and their remaining cells transfer to the capturer
+    let admirals_remaining = game.players[victim_id].admiral_count();
+    // console.log(`Admiral captured! Victim: ${victim_id} Remaining admirals: ${admirals_remaining}`);
+
+    if (admirals_remaining == 0) { //admiral captured!
+        game.cells.forEach(cell => {
+            if(cell.owner == victim_id) {
+                cell.owner = culprit_id;
+                cell.troops = Math.max(Math.floor(cell.troops/2), 1);
+            };
+        });  
+    };
+}
+
 function init_server() {
     let n_rows = 10 + Math.floor(Math.random()*18) 
     let n_cols = 12 + Math.floor(Math.random()*30)
 
-    let fog_of_war = false;
+    let fog_of_war = true;// Math.random() > .5;
 
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', '#0a5a07')
@@ -921,8 +947,12 @@ function init_server() {
     game.add_bot('bot personality', '#B9B165')
     game.add_bot('bot personality', '#881798')
 
-    spawn_admirals(50); // the number of entities to create and the number of troops they start with
-    spawn_terrain();
+    spawn_admirals(25); // the number of entities to create and the number of troops they start with
+    let water_weight = 4 + Math.random();
+    let mountain_weight = 1 + Math.random();
+    let swamp_weight  = .1 + Math.random() / 4 ; 
+
+    spawn_terrain(water_weight, mountain_weight, swamp_weight);
     
     game_tick_server = 0
     game_on = true; // start with the simulation running instead of paused
@@ -945,11 +975,12 @@ function spawn_admirals(starting_troops) {
     }
 }
 
-function spawn_terrain() {
+function spawn_terrain(water_weight, mountain_weight, swamp_weight) {
     let arr_options = [
-        {'value': TERRAIN_TYPE_WATER, 'weight':80},
-        {'value': TERRAIN_TYPE_SWAMP, 'weight':5},
-        {'value': TERRAIN_TYPE_MOUNTAIN, 'weight':15},
+        {'value': TERRAIN_TYPE_WATER, 'weight':water_weight},
+        {'value': TERRAIN_TYPE_MOUNTAIN, 'weight':mountain_weight},
+        {'value': TERRAIN_TYPE_SWAMP, 'weight':swamp_weight},
+    
     ];
 
     game.cells.forEach(cell => {
@@ -1079,4 +1110,3 @@ function check_for_game_over() {
         console.log(`Game over! Player (TBD) wins!!!`); // TODO pass this info on to the client
     };
 }
-
