@@ -859,7 +859,7 @@ class Bot {
     }
 }
 
-function try_to_move_ship(cell_id_source, cell_id_dest) {
+function try_to_move_ship(cell_id_source, cell_id_dest, action) {
     // Assumes this a valid move where the same player owns both cells and the action is ACTION_MOVEALL. 
     // This function calculates whether or not to move the ship and combines ships if appropriate. Also makes sure to leave 1 troop behind if a ship remains in source cell
     let source_entity = game.cells[cell_id_source].entity
@@ -924,8 +924,8 @@ function try_to_move_ship(cell_id_source, cell_id_dest) {
                 break;                    
         };    
         
-    } else { // instead of abandoning ship, leave one troop behind
-        game.cells[cell_id_source].troops = 1
+    } else if (action ==ACTION_MOVE_ALL) { // instead of abandoning ship, leave one troop behind
+        game.cells[cell_id_source].troops += 1
     }
         
 }
@@ -1033,7 +1033,7 @@ function update_game() { // advance game by 1 tick
                         if (game.cells[cell_id_dest].owner == move.queuer) { //either we owned it already or it was just taken over
                             //If we are trying to MOVE_ALL a ship, run a check on the appropriate logic (unload troops, move ship, or combine ships)
                             if([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4, null].includes(game.cells[cell_id_source].entity) ) { //} && move.action == ACTION_MOVE_ALL) { 
-                                try_to_move_ship(cell_id_source, cell_id_dest);
+                                try_to_move_ship(cell_id_source, cell_id_dest, move.action);
                                 
                             };
                         };
@@ -1065,8 +1065,8 @@ function attempt_takeover(victim_id, culprit_id) {
 }
 
 function init_server() {
-    //let fog_of_war = Math.random() > .5;
-    let fog_of_war = false;
+    let fog_of_war = Math.random() > .5;
+    //let fog_of_war = false;
     
     let n_rows = 15 + Math.floor(Math.random()*15) 
     let n_cols = 15 + Math.floor(Math.random()*30)
@@ -1212,6 +1212,14 @@ function send_game_state() {
             cell_string += '}, '
             game_string += cell_string ;
         }
+        else if (cell.terrain != TERRAIN_TYPE_WATER || [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
+            let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
+            cell_string += `, "terrain":${TERRAIN_TYPE_MOUNTAIN}`
+            if (true) {cell_string += `, "visible":true`}
+   
+            cell_string += '}, '
+            game_string += cell_string ;
+        };
     });
 
     game_string = game_string.slice(0,-2); // remove the last two characters from the string - either remove a trailing ', ' or if no cells are included then then the '  ' from the end of the header
