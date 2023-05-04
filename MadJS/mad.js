@@ -121,6 +121,7 @@ class CellClient {
     static mountain_color = '#888888'
     static swamp_color = '#0E735A'
     static high_tide_color = '#0E306C'
+    static low_tide_color = '#1A57C4'
     static neutral_entity_color = '#BBBBBB'
             
     constructor(context, id, row, col) {
@@ -150,7 +151,7 @@ class CellClient {
                 this.context.fillStyle = CellClient.swamp_color            
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
             } else {
-                this.context.fillStyle = CellClient.high_tide_color            
+                this.context.fillStyle = CellClient.low_tide_color            
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)    
             }
             
