@@ -17,9 +17,9 @@ const MAX_SCALE = 15;
 const DEFAULT_ZOOM = 4;
 let zoom_scale = DEFAULT_ZOOM; // for scroll wheel zooming
 
-const DEFAULT_CANVAS_WIDTH = 50
-const DEFAULT_CANVAS_HEIGHT = 50
-const DEFAULT_FONT_SIZE = 18
+const DEFAULT_CANVAS_WIDTH = 50;
+const DEFAULT_CANVAS_HEIGHT = 50;
+const DEFAULT_FONT_SIZE = 18;
 let font_size = DEFAULT_FONT_SIZE;
 
 const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rendering. Due to how setTimeout works, may be up to 16 ms late
@@ -34,40 +34,42 @@ let last_starting_configuration;
 let game = null;
 let move_mode; // values are defined in the ACTION_MOVE_ constants
 
-const GAME_MODE_FFA = 1
-const GAME_MODE_FFA_CUST = 2
-const GAME_MODE_REPLAY = 3
+const GAME_MODE_FFA = 1;
+const GAME_MODE_FFA_CUST = 2;
+const GAME_MODE_REPLAY = 3;
 
-const GAME_STATUS_INIT = 0 // loading
-const GAME_STATUS_READY = 1 // able to start
-const GAME_STATUS_IN_PROGRESS = 2 //
-const GAME_STATUS_PAUSE = 3 //
-const GAME_STATUS_GAME_OVER_WIN = 4 // game instance is complete and can no longer be played
-const GAME_STATUS_GAME_OVER_LOSE = 5 // game instance is complete and can no longer be played
+const GAME_STATUS_INIT = 0; // loading;
+const GAME_STATUS_READY = 1; // able to start;
+const GAME_STATUS_IN_PROGRESS = 2; //;
+const GAME_STATUS_PAUSE = 3; //;
+const GAME_STATUS_GAME_OVER_WIN = 4; // game instance is complete and can no longer be played;
+const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no longer be played;
+
+const MIN_DISTANCE_ADMIRALS = 5;
 
 ///////////
 // Shared constants
 ///////////
 
-const TERRAIN_TYPE_WATER = 101
-const TERRAIN_TYPE_SWAMP = 104 
-const TERRAIN_TYPE_MOUNTAIN = 105
-const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106
-const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107
+const TERRAIN_TYPE_WATER = 101;
+const TERRAIN_TYPE_SWAMP = 104 ;
+const TERRAIN_TYPE_MOUNTAIN = 105;
+const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106;
+const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107;
 
-const ENTITY_TYPE_ADMIRAL = 200
-const ENTITY_TYPE_SHIP = 201
-const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate
-const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate
-const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate
-const ENTITY_TYPE_INFANTRY = 205
+const ENTITY_TYPE_ADMIRAL = 200;
+const ENTITY_TYPE_SHIP = 201;
+const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
+const ENTITY_TYPE_INFANTRY = 205;
 
 
-const ACTION_MOVE_NORMAL = 1
-const ACTION_MOVE_HALF = 2
-const ACTION_MOVE_ALL = 3
-const ACTION_MOVE_CITY = 4
-const ACTION_MOVE_NONE = 5
+const ACTION_MOVE_NORMAL = 1;
+const ACTION_MOVE_HALF = 2;
+const ACTION_MOVE_ALL = 3;
+const ACTION_MOVE_CITY = 4;
+const ACTION_MOVE_NONE = 5;
 
     
 
@@ -117,12 +119,14 @@ function init_client(){
 class CellClient {
     static width = DEFAULT_CANVAS_WIDTH;
     static height = DEFAULT_CANVAS_HEIGHT;
-    static grid_color = '#bb00ff'
-    static mountain_color = '#888888'
+    static grid_color = '#222222' //'#bb00ff'
+    static mountain_color = '#555555'
+    
     static swamp_color = '#0E735A'
     static high_tide_color = '#0E306C'
-    static low_tide_color = '#1A57C4'
+    static low_tide_color = '#2A77E4' //'#1A57C4'
     static neutral_entity_color = '#BBBBBB'
+    static hidden_color = '#113366'
             
     constructor(context, id, row, col) {
         this.context = context; // the context of the canvas we'll be drawing to
@@ -203,7 +207,7 @@ class CellClient {
         let x = this.col*CellClient.width + CellClient.width/2;
         let y = this.row*CellClient.height + CellClient.height/2;
         let radius = CellClient.width/2;
-
+        // num_points = Math.floor(Math.random(5)+2)
         let fillColor = (this.owner !=null) ? game.players[this.owner].color: CellClient.neutral_entity_color;
 
         this.context.save();
@@ -299,8 +303,7 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
 }
 
 function render_board() {    
-    //context.fillStyle='#0E306C'  // High Tide Blue '#DDDDDD' // grey
-    context.fillStyle='#222222'  // High Tide Blue '#DDDDDD' // grey
+    context.fillStyle=CellClient.hidden_color  
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
     // Draw each gridline and object on the canvas
@@ -636,7 +639,7 @@ function game_loop_server() {
         game_tick_server++;
         check_for_game_over();
         update_game(); // check each cell to see if it should be alive next turn and update the .alive tag                
-        send_game_state();
+        send_game_state_to_players();
     }
     setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, tick_time) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
 }
@@ -676,6 +679,7 @@ class Game {
     }
     
 }
+
 
 class CellServer {
     constructor(context, id, row, col) {
@@ -906,22 +910,22 @@ function try_to_move_ship(cell_id_source, cell_id_dest, action) {
             case 5: 
                 game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP;
                 game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                game.cells[cell_id_source].troops = 1
+                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
                 break;
             case 6: 
                 game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_2;
                 game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                game.cells[cell_id_source].troops = 1
+                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
                 break;
             case 7: 
                 game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_3;
                 game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                game.cells[cell_id_source].troops = 1
+                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
                 break;
             case 8: 
                 game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_4;
                 game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                game.cells[cell_id_source].troops = 1
+                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
                 break;                    
         };    
         
@@ -1077,33 +1081,52 @@ function init_server() {
     let swamp_weight  = .1 + Math.random() / 4 ; 
     let ship_weight = .2 + Math.random() / 2;
 
-
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', '#0a5a07')
     game.add_bot('bot personality', '#E74856')
     game.add_bot('bot personality', '#B9B165')
     game.add_bot('bot personality', '#881798')
 
-    spawn_admirals(25); // the number of entities to create and the number of troops they start with
+    spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
     
 
     spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
     game_tick_server = -1
     game_on = true; // start with the simulation running instead of paused
-    send_game_state();
+    send_game_state_to_players();
     game_loop_server()
+}
+
+function distance_to_nearest_admiral(from_address) { // gets the Manhattan distance to the nearest admiral. Returns 999 if none found
+    let closest_entity = 999;
+    let ref_row = game.cells[from_address].row
+    let ref_col = game.cells[from_address].col
+    
+    game.cells.forEach(cell => {
+        // console.log(`Closest entity so far: ${closest_entity}`)
+        if (cell.entity == ENTITY_TYPE_ADMIRAL) {
+            let distance = Math.abs(ref_row - cell.row) + Math.abs(ref_col - cell.col)
+            if (distance > 0 && distance < closest_entity) {
+                closest_entity = distance
+            };
+        };
+    });
+    
+    // console.log(`Closest entity ${closest_entity}`)
+    return closest_entity
+
 }
 
 function spawn_admirals(starting_troops) {
     for (let i = 0; i < game.players.length; i++) {
         let not_found = true;
         while (not_found) {
-            let rand_cell = Math.floor(Math.random() * game.num_rows * game.num_cols);
-            if (game.cells[rand_cell].owner == null) {
-                game.cells[rand_cell].owner = i;
-                game.cells[rand_cell].troops = starting_troops;
-                game.cells[rand_cell].entity = ENTITY_TYPE_ADMIRAL;
+            let rand_cell_id = Math.floor(Math.random() * game.num_rows * game.num_cols);
+            if (game.cells[rand_cell_id].owner == null && distance_to_nearest_admiral(rand_cell_id) > MIN_DISTANCE_ADMIRALS) {
+                game.cells[rand_cell_id].owner = i;
+                game.cells[rand_cell_id].troops = starting_troops;
+                game.cells[rand_cell_id].entity = ENTITY_TYPE_ADMIRAL;
                 not_found = false;
             }
         } 
@@ -1185,11 +1208,20 @@ function get_cell_by_coords(row, col) { // Returns the server cell object at the
     return game.cells[row*game.num_cols+col]
 }
 
+
 //An attempt at predicting what the server to client communication will look like
-function send_game_state() {
-    let player_id = 0;
+function send_game_state_to_players() {
+    game.players.forEach(player => {
+        if (player.is_human) {
+            send_game_state_to(player.uid);
+        }
+    } );
+}
+
+function send_game_state_to(player_id) {
+    // let player_id = 0;
     
-    let next_queue_id = game.players[0].queued_moves.length > 0 ? game.players[0].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
+    let next_queue_id = game.players[player_id].queued_moves.length > 0 ? game.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
 
     // Start with header information about the game
     let game_string = '{ "game": {' +
