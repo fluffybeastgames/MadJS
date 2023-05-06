@@ -36,42 +36,30 @@ class AStar {
         } else {
             return false; // out of bounds
         };
+    }
 
-
+    print_board(path) {
+        let str_out = '';
         
-
-        // let cell_id = target_row*this.board.num_cols + target_col;
-
-        //     if (source_address[0] > 0 && this.board.cells[target_row*]) {
-        //         return true
-        //     }
-        // }
-
-    }
-
-    print_board() {
-        let str_out = '';
+        
         for (let r = 0; r < this.board.num_rows; r++) {
             for (let c = 0; c < this.board.num_cols; c++) {
-                str_out += ` ${this.board.cells[r*this.board.num_cols + c].str_version()}`
-
-            };
-            str_out += '\n'
-        };
-
-        console.log(str_out)
-    }
-    print_board_path(path) {
-        let str_out = '';
-        let path_found;
-        for (let r = 0; r < this.board.num_rows; r++) {
-            for (let c = 0; c < this.board.num_cols; c++) {
-                path_found = false
-
+                let path_found = false
+                
+                let path_ct = 0;
                 path.forEach(cell => {
+                    path_ct++;
                     if (cell[0] == r && cell[1] == c) {
-                        str_out += ' O'
+                        str_out += ' O';
                         path_found = true;
+
+                        // if (path_ct == 0) {
+                        //     str_out += '@'
+                        // } else if (path_ct == path.length - 1) {
+                        //     str_out += '$'
+                        // } else {
+                        //     str_out += 'O'
+                        // };
                     };
                 });
 
@@ -129,18 +117,15 @@ class AStar {
         // Create the starting node at the start_address
         open_set.push(new AStarNode(null, start_address, target_address));
 
-
         let check_counter = 0;
         while (open_set.length > 0 && !target_found) {
             check_counter++;
             open_set.sort((a, b) => (a.f > b.f) ? 1 : -1); //sort the open nodes by their F value, ascending, ascending, in order to optimize search/final path
             
             current_node = open_set.shift();
-            closed_set.push(current_node);
+            //closed_set.push(current_node);
             
             // console.log(`${check_counter} Open set length: ${open_set.length}\tClose set: ${closed_set.length}. current_node: id ${current_node.address} address ${current_node.address}`)
-            
-
             if (current_node.address[0] == target_address[0] && current_node.address[1] == target_address[1]) {
                 target_found = true;
             } else{
@@ -149,6 +134,7 @@ class AStar {
                     let new_node = new AStarNode(current_node, [current_node.address[0]-1, current_node.address[1]], target_address);
                     
                     if(new_node_not_in_closed_set(new_node, closed_set)) {
+                        closed_set.push(current_node);
                         if(new_node_not_in_open_set(new_node, open_set)) {
                             // console.log('push new node up')
                             open_set.push(new_node);
@@ -166,6 +152,7 @@ class AStar {
                     let new_node = new AStarNode(current_node, [current_node.address[0], current_node.address[1]-1], target_address);
                     
                     if(new_node_not_in_closed_set(new_node, closed_set)) {
+                        closed_set.push(current_node);
                         if(new_node_not_in_open_set(new_node, open_set)) {
                             // console.log('push new node left')
                             open_set.push(new_node);
@@ -183,6 +170,7 @@ class AStar {
                     let new_node = new AStarNode(current_node, [current_node.address[0]+1, current_node.address[1]], target_address);
                     
                     if(new_node_not_in_closed_set(new_node, closed_set)) {
+                        closed_set.push(current_node);
                         if(new_node_not_in_open_set(new_node, open_set)) {
                             // console.log('push new node down')
                             open_set.push(new_node);
@@ -200,6 +188,7 @@ class AStar {
                     let new_node = new AStarNode(current_node, [current_node.address[0], current_node.address[1]+1], target_address);
                     
                     if(new_node_not_in_closed_set(new_node, closed_set)) {
+                        closed_set.push(current_node);
                         if(new_node_not_in_open_set(new_node, open_set)) {
                             // console.log('push new node right')
                             open_set.push(new_node);
@@ -296,20 +285,23 @@ function test_path_finder() {
     // console.log(astar.board.cells[35]);
     // console.log(astar.board.cells[35].row, astar.board.cells[15].col);
 
-    astar.print_board();
+    // let start_address = [1, 1];
+    // let target_address = [5, 15];
+    
+    let start_address = [Math.floor(Math.random()*num_rows), Math.floor(Math.random()*num_cols)];
+    let target_address = [Math.floor(Math.random()*num_rows), Math.floor(Math.random()*num_cols)];
 
-    let start_address = [1, 1];
-    let target_address = [5, 15];
+
+    astar.print_board([start_address, target_address]);
 
     let path = astar.find_path(start_address, target_address);
     console.log('Final path:');
     console.log(path);
 
     if(path) { 
-        astar.print_board_path(path); 
+        astar.print_board(path); 
     } else {
-        path = [start_address, target_address]
-        astar.print_board_path(path); 
+        astar.print_board([start_address, target_address]); 
 
     };
     
