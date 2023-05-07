@@ -26,8 +26,6 @@ class AStar {
 
     print_board(path) {
         let str_out = '';
-        
-        
         for (let r = 0; r < this.board.num_rows; r++) {
             for (let c = 0; c < this.board.num_cols; c++) {
                 let path_found = false
@@ -96,6 +94,8 @@ class AStar {
         let current_node;
     
         // Create the starting node at the start_address
+
+        // console.log(start_address, target_address)
         open_set.push(new AStarNode(null, start_address, target_address));
         
 
@@ -146,7 +146,7 @@ class AStar {
         };
 
         if (target_found) {
-            console.log('target found')
+            // console.log('target found')
 
             let final_path = [];
             let path_node = current_node;
@@ -159,7 +159,7 @@ class AStar {
             return final_path;
 
         } else {
-            console.log('target not found')
+            // console.log('target not found')
             return null;
         }
 
@@ -211,7 +211,7 @@ class ACell {
 function test_path_finder() {
     console.log('testing A* path finder')
     let num_rows = 50;
-    let num_cols = 50;
+    let num_cols = 25;
     let rand_obstacle_rate = .25
 
     let board = new ABoard(num_rows, num_cols, rand_obstacle_rate);
@@ -235,4 +235,4 @@ function test_path_finder() {
     
 }
 
-test_path_finder();
+// test_path_finder();
