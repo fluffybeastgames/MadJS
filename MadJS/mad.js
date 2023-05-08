@@ -8,7 +8,7 @@ const cells_client = []; // This is the array of cell objects as understood by t
 let  game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
-const valid_key_presses = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q'] //, 37]
+const valid_key_presses = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
 const local_move_queue = [];
 let local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
 
@@ -429,25 +429,24 @@ function handle_key_press(key_key) {
     let dir, target_row, target_col;
     
     
-    if ((key_key == 'W' || key_key == 'w') && active_cell[0] > 0) {
+    if ((key_key == 'W' || key_key == 'w' || key_key == 'ArrowUp') && active_cell[0] > 0) {
         target_row = active_cell[0] - 1
         target_col = active_cell[1]
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'up')
-    //} else if ((key_key == 'A' || key_key == 'a' || key_key == 37) && active_cell[1] > 0) { // left
-    } else if ((key_key == 'A' || key_key == 'a') && active_cell[1] > 0) { // left
+    } else if ((key_key == 'A' || key_key == 'a' || key_key == 'ArrowLeft') && active_cell[1] > 0) { // left
         target_row = active_cell[0]
         target_col = active_cell[1] - 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'left')
-    } else if ((key_key == 'S' || key_key == 's') && active_cell[0] < game.num_rows - 1) { // down
+    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game.num_rows - 1) { // down
         target_row = active_cell[0] + 1
         target_col = active_cell[1]
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'down')
-    } else if ((key_key == 'D' || key_key == 'd') && active_cell[1] < game.num_cols - 1) { // right
+    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game.num_cols - 1) { // right
         target_row = active_cell[0]
         target_col = active_cell[1] + 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'right')
     } else {
-        if (key_key == 'Q' || key_key == 'q') { 
+        if (key_key == 'Q' || key_key == 'q' || key_key == '') { 
             cancel_queue()
             
         } else if (key_key == 'E' || key_key == 'e') {
@@ -612,8 +611,8 @@ function client_receives_game_state_here(json) {
         });
 
         let scoreboard_data = json.scoreboard;
-        // console.log(scoreboard_data)
-
+        scoreboard_data.sort((a, b) => (a.troops > b.troops) ? -1 : 1); //sort by troops, descending
+        
         const table_body = scoreboard_data.map(value => {
             let bg_color = value.admirals == 0 ? CellClient.neutral_entity_color : value.color; // remove the player's fleet color from the scoreboard if they're out of the game
             return (
