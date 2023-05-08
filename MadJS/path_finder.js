@@ -101,7 +101,7 @@ class AStar {
 
         // while (open_set.length > 0 && !target_found && closed_set.length < this.board.num_rows*this.board.num_cols) {
         while (open_set.length > 0 && !target_found) {            
-            open_set.sort((a, b) => (a.f > b.f) ? 1 : -1); //sort the open nodes by their F value, ascending, ascending, in order to optimize search/final path
+            open_set.sort((a, b) => (a.f > b.f) ? 1 : -1); //sort the open nodes by their F value, ascending, in order to optimize search/final path
             
             current_node = open_set.shift();
             closed_set.push(current_node);

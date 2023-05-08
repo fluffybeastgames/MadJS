@@ -579,12 +579,12 @@ function drag_canvas_event_handler(canvas_element) {
 
 
 function toggle_pause() { //TODO remove this
-    console.log('This button has been phased out!')
-    // console.log('Toggling pause')
-    // game_on = !game_on //game_loop will keep running when game_on is false but will not update the board or render it
+    //console.log('This button has been phased out!')
+    console.log('Toggling pause')
+    game_on = !game_on //game_loop will keep running when game_on is false but will not update the board or render it
     
-    // // Update the button text to indicate the action it would perform
-    // document.getElementById('pause_resume_button').innerText = game_on ? 'Pause' : 'Play';
+    // Update the button text to indicate the action it would perform
+    document.getElementById('pause_resume_button').innerText = game_on ? 'Pause' : 'Play';
 }
 
 function client_receives_game_state_here(json) {
@@ -617,7 +617,7 @@ function client_receives_game_state_here(json) {
             let bg_color = value.admirals == 0 ? CellClient.neutral_entity_color : value.color; // remove the player's fleet color from the scoreboard if they're out of the game
             return (
                 `<tr bgcolor="${bg_color}">
-                <td style="color:#FFFFFF;text-align:center">${value.uid}</td>
+                <td style="color:#FFFFFF;text-align:center">${value.display_name}</td>
                 <td style="color:#FFFFFF;text-align:center">${value.admirals}</td>
                 <td style="color:#FFFFFF;text-align:center">${value.ships}</td>
                 <td style="color:#FFFFFF;text-align:center">${value.troops}</td>
@@ -684,16 +684,16 @@ class Game {
         // this.astar.print_board([0,0], [1,1]);
     }
 
-    add_human(session_id, color) {
+    add_human(session_id, name, color) {
         let new_id = this.players.length
         this.player_turn_order.push(new_id)
-        this.players.push(new HumanPlayer(new_id, session_id, color))
+        this.players.push(new HumanPlayer(new_id, session_id, name, color))
     }
 
-    add_bot(personality, color) {
+    add_bot(personality, name, color) {
         let new_id = this.players.length
         this.player_turn_order.push(new_id)
-        this.players.push(new Bot(new_id, personality, color))
+        this.players.push(new Bot(new_id, personality, name, color))
     }
     
     initialize_cells() {
@@ -738,11 +738,12 @@ class CellServer {
 }
 
 class HumanPlayer {
-    constructor(uid, session_id, color) {
-        this.uid = uid // 0-n, may be unecessary as we can use the position in Players[] as the uid
-        this.session_id = session_id // the session ID of the connected player
-        this.color = color //temp. green
-        this.queued_moves = []
+    constructor(uid, session_id, name, color) {
+        this.uid = uid; // 0-n, may be unecessary as we can use the position in Players[] as the uid
+        this.display_name = name;
+        this.session_id = session_id; // the session ID of the connected player
+        this.color = color; //temp. green
+        this.queued_moves = [];
         this.is_human = true;
         this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
     }
@@ -782,10 +783,11 @@ class HumanPlayer {
 }
 
 class Bot {
-    constructor(uid, personality, color) {
-        this.uid = uid
-        this.personality = personality
-        this.color = color
+    constructor(uid, personality, name, color) {
+        this.uid = uid;
+        this.display_name = name;
+        this.personality = personality;
+        this.color = color;
         this.queued_moves = []
         this.is_human = false;
         this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
@@ -866,14 +868,7 @@ class Bot {
 
             if (origin_address && target_address) {
                 let path = game.astar.find_path(origin_address.address, target_address.address);
-
-                
-                // console.log(game.astar.print_board(game.astar.find_path([0,0], [5,5])));
-
                 if (path) {
-                    // console.log(path.length)
-                    // console.log(path)
-                    // game.astar.print_board(path);
                     for (let i = 0; i < path.length - 1; i++) {
                         let new_move = {'id':-1, 'row':path[i][0], 'col':path[i][1], 'dir':'n/a',
                                         'queuer':this.uid,'target_row':path[i+1][0], 'target_col':path[i+1][1], 
@@ -912,7 +907,6 @@ class Bot {
             if (origin_address && target_address) {
                 let path = game.astar.find_path(origin_address, target_address);
                 if (path) {
-                    // game.astar.print_board(path);
                     path.forEach(cell => {
                         let new_move = {'id':-1, 'row':cell.address[0], 'col':cell.address[1], 'dir':'n/a',
                                         'queuer':this.uid,'target_row':target_address.address[0], 'target_col':target_address.address[1], 
@@ -921,35 +915,32 @@ class Bot {
                     })
                 };
             };
-            //console.log(path)
         };
     }
-
-    
 
     grow() { // a bot behavior that emphasizes growth over safey or combat. However, it will probably try to take over admirals and ships, given the chance
         function eval_potential_move(cell, target, this_uid, troop_count) {        
             //Evaluate the given situation and assign it a weight based on its suspected quality
             let cell_ratio = (cell.troops - target.troops)/ troop_count;
             if (target.terrain == TERRAIN_TYPE_MOUNTAIN) {return [0, ACTION_MOVE_NONE]} // don't try to grow into mountains (not yet, anyway)            
-            if (cell.troops <= 1) {return [0, ACTION_MOVE_NONE]} // don't try growing if you don't have any troops to spare
+            if (cell.troops <= 1) {return [0, ACTION_MOVE_NONE]}; // don't try growing if you don't have any troops to spare
             
-            let weight = 0
-            let move_mode = ACTION_MOVE_NORMAL
-            if (target.owner == this_uid) { weight += 1 }
-            if (target.owner == null) { weight += 15 }
-            if (target.owner != this_uid && target.troops < cell.troops + 1) { weight += 10 }
-            if (target.owner != this_uid && target.troops < cell.troops + 1 && target.entity == ENTITY_TYPE_ADMIRAL) { weight += 40 } //strongly prioritize capturing enemy admirals
+            let weight = 0;
+            let move_mode = ACTION_MOVE_NORMAL;
+            if (target.owner == this_uid) { weight += 1 };
+            if (target.owner == null) { weight += 15 };
+            if (target.owner != this_uid && target.troops < cell.troops + 1) { weight += 10 };
+            if (target.owner != this_uid && target.troops < cell.troops + 1 && target.entity == ENTITY_TYPE_ADMIRAL) { weight += 40 }; //strongly prioritize capturing enemy admirals
             if (target.owner != this_uid && target.troops < cell.troops + 1 && target.entity == ENTITY_TYPE_SHIP) { 
                 weight += 10;
                 move_mode = ACTION_MOVE_ALL;
             } //also capturing enemy ships
-            if (target.owner != this_uid && target.troops >= cell.troops + 1) { weight += 2 }
+            if (target.owner != this_uid && target.troops >= cell.troops + 1) { weight += 2 };
             if (cell.terrain == TERRAIN_TYPE_SWAMP && target.terrain == TERRAIN_TYPE_WATER) { 
                 weight += 25;
                 move_mode = ACTION_MOVE_ALL;
             }
-            if (target.terrain == TERRAIN_TYPE_SWAMP) { weight -= 15 }
+            if (target.terrain == TERRAIN_TYPE_SWAMP) { weight -= 15 };
             
             // console.log(weight, cell.troops, troop_count, cell_ratio)
             weight = Math.max(weight * cell_ratio, 0);
@@ -1016,17 +1007,17 @@ class Bot {
                     // Remove result from list of potential_moves for the remainder of the turn
                     potential_moves = potential_moves.filter(item => item.cell !== result.cell)
                 };
-            }
+            };
         };
-    }
+    };
 }
 
 function try_to_move_ship(cell_id_source, cell_id_dest, action) {
     // Assumes this a valid move where the same player owns both cells and the action is ACTION_MOVEALL. 
     // This function calculates whether or not to move the ship and combines ships if appropriate. Also makes sure to leave 1 troop behind if a ship remains in source cell
-    let source_entity = game.cells[cell_id_source].entity
-    let dest_entity = game.cells[cell_id_dest].entity
-    let dest_terrain = game.cells[cell_id_dest].terrain
+    let source_entity = game.cells[cell_id_source].entity;
+    let dest_entity = game.cells[cell_id_dest].entity;
+    let dest_terrain = game.cells[cell_id_dest].terrain;
     
 
     if ([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4, null].includes(dest_entity) && // make sure we're not moving into an admiral
@@ -1088,7 +1079,7 @@ function try_to_move_ship(cell_id_source, cell_id_dest, action) {
         
     } else if (action ==ACTION_MOVE_ALL) { // instead of abandoning ship, leave one troop behind
         game.cells[cell_id_source].troops += 1
-    }
+    };
         
 }
 
@@ -1123,15 +1114,21 @@ function update_game() { // advance game by 1 tick
         if (game_tick_server > 2) {
             game.players.forEach(player => {
                 if (!player.is_human) {
-                    //console.log('bot')
-                    player.take_move()
+                    player.take_move();
                 }
             });  
         };      
+        
+        // Execute the next queued move for each player
+        for (let i = 0; i < game.players.length; i++) {
+            let player;
+            if (game_tick_server % 2 == 0) { // flip flop the turn order each round
+                player = game.players[i];
+            } else {
+                player = game.players[game.players.length - i - 1];
+            }
 
-        //Process the queue. Note that this currently always goes in the same order - we want to flip flop this order every turn
-        game.players.forEach(player => {
-            let valid_move = false
+            let valid_move = false;
             let move, troops_to_move;
             while (!valid_move && player.queued_moves.length>0) {
                 move = player.queued_moves.shift();
@@ -1141,9 +1138,7 @@ function update_game() { // advance game by 1 tick
                 cell_id_dest = move.target_row * game.num_cols + move.target_col
 
                 // Only complete the move if the queuer owns the source cell
-                if (game.cells[cell_id_source].owner == move.queuer) {
-                    // console.log(move);     
-                    
+                if (game.cells[cell_id_source].owner == move.queuer) {                   
                     // Is it a valid destination?
                     if (game.cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
                         valid_move = false;
@@ -1169,8 +1164,6 @@ function update_game() { // advance game by 1 tick
                             
                             game.cells[cell_id_source].troops -= troops_to_move;
                             game.cells[cell_id_dest].troops += troops_to_move;
-                            
-  
 
                         } else { // Otherwise invade the destination cell
                             game.cells[cell_id_source].troops -= troops_to_move;
@@ -1183,12 +1176,7 @@ function update_game() { // advance game by 1 tick
 
                                 if (game.cells[cell_id_dest].entity == ENTITY_TYPE_ADMIRAL) {
                                     attempt_takeover(old_owner, move.queuer);
-                                };
-                                // if(game.cells[cell_id_source].entity == ENTITY_TYPE_SHIP && move.action == ACTION_MOVE_ALL && !game.cells[cell_id_dest].entity) {
-                                //     game.cells[cell_id_source].entity = null;
-                                //     game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP;
-                                // };
-                                
+                                };                                
                             };
                         };
 
@@ -1200,15 +1188,14 @@ function update_game() { // advance game by 1 tick
                             };
                         };
                         
-                        
                         if (game.cells[cell_id_source].troops <= 0) { 
                             game.cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
                         };
                     } ;
                 };
             };
-        });
-    }
+        };
+    };
 }
 
 function attempt_takeover(victim_id, culprit_id) {
@@ -1243,18 +1230,32 @@ function init_server() {
   //  ship_weight = 0; //DEV
     
     const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#0C0C0C', '#B9B165'];
+    const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
+                                'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
+                                'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
+                                'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
+                                'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
+                                'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
     
     game = new Game(n_rows, n_cols, fog_of_war);
-    game.add_human('12345678', '#0a5a07')
+    game.add_human('12345678', 'Player One', '#0a5a07');
+
     for (let i = 0; i < n_bots; i++) {
-        game.add_bot('bot personality', bot_color_options.shift())
+        let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
+        let bot_color = bot_color_options[bot_color_index];
+        bot_color_options.splice(bot_color_index, 1);
+
+        let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
+        let bot_name = bot_name_options[bot_name_index];
+        bot_name_options.splice(bot_name_index, 1);
+
+        game.add_bot('bot personality', bot_name, bot_color);
+
     };
 
     spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
     spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
-    // console.log(game.astar.print_board(game.astar.find_path([0,0], [5,5])));
-
     game_tick_server = -1
     game_on = true; // start with the simulation running instead of paused
     send_game_state_to_players();
@@ -1423,7 +1424,7 @@ function send_game_state_to(player_id) {
     game_string += '], "scoreboard":[  '; // close the board loop and start adding the scoreboard
     
     for (let i = 0; i < game.players.length; i++) {
-        game_string += `{"uid": ${game.players[i].uid}, "troops": ${game.players[i].troop_count()}, "ships": ${game.players[i].ship_count()}, "admirals": ${game.players[i].admiral_count()}, "color": "${game.players[i].color}" }, `   
+        game_string += `{"display_name": "${game.players[i].display_name}", "troops": ${game.players[i].troop_count()}, "ships": ${game.players[i].ship_count()}, "admirals": ${game.players[i].admiral_count()}, "color": "${game.players[i].color}" }, `   
     };
 
     game_string = game_string.slice(0,-2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
