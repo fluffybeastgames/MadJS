@@ -3,8 +3,7 @@
 ## About MadJS
 
 What is MadJS?
-* A browser game written in Javascript 
-* Based on an unreleased Python game, Madmirals. Both owe a debt of inspiration to generals.io
+* A browser game written in Javascript where the goal is to capture all of the enemy admirals without losing your own
 * A WIP. This game is not finished nor ready for widespread testing
 * Open source! See the license for more
 * Made for the love of coding, gaming, and learning
@@ -40,8 +39,8 @@ Controls
 
 There are three options when it comes to moving around the board:
  * Left click on a green cell to select it, then use the WASD keys to move, leaving a trail of cells behind. These cells will grow in size over time, to your benefit.
- * Yo may instead move all of your troops by middle clicking on a cell and then moving it about with the WASD keys. The active cell will be highlighted in red instead of white to indicate the intended behavior.
-* Finally, you may split a cell in half by right clicking it and then pressing a WASD key. The cell will be highlighted in yellow while waiting to split.
+* You can also split a cell in half by right clicking it and then pressing a WASD key. The cell will be highlighted in yellow while waiting to split. This mode can also be selected by double (left) clicking on a cell.
+* You may instead move all of your troops by middle clicking on a cell and then moving it about with the WASD keys. The active cell will be highlighted in red instead of white to indicate the intended behavior. Move All mode can also be activated by triple (left) clicking.
 
 Mountains (grey cells) cannot be crossed. Currently there is no logic to prevent them from spawning all around you. Refresh the page if you are stuck behind mountains.
 
