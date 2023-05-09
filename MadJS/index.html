@@ -4,6 +4,7 @@
         <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
         <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-grey.css">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.min.css">   
+        <link rel="stylesheet" href="./assets/mad.css">  
         <link rel="shortcut icon" href="./assets/favicon.ico" type="image/x-icon">
         <link rel="icon" href="./assets/favicon.ico" type="image/x-icon">     
 
@@ -42,13 +43,14 @@
         </header> -->
         <div class="w3-row">
             <div class="w3-bar w3-black w3-rest">
-                <a class="w3-bar-item w3-button", id="reset_button", onclick="reset_game()">New Game</a>
+                <a class="w3-bar-item w3-button", id="reset_button", onclick="show_new_game_overlay()">New Game</a>
                 <a class="w3-bar-item w3-button", id="pause_resume_button", onclick="toggle_pause()">Pause</a>
                 <span class="w3-bar-item" id="turn_counter"></span> 
             </div>
         </div>
         <div class="w3-row">
             <div class="w3-padding w3-grey w3-rest"  style="position:absolute;right:0" id="scoreboard_div">
+                <h3 id="turn_counter_scoreboard"></h3>
                 <table>
                     <thead>
                       <tr>
@@ -67,6 +69,10 @@
         </div>
         <div class="w3-row">
             <div class="w3-padding w3-grey w3-rest" id="canvas_div">
+                <div id="mad-overlay" onclick="hide_new_game_overlay()">
+                </div> 
+                
+                
                 <canvas id="canvas" width="100" height="100" style="border:1px solid lightgrey;position:absolute;">
                 </canvas>
                 <noscript>

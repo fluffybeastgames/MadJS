@@ -8,9 +8,10 @@ const cells_client = []; // This is the array of cell objects as understood by t
 let  game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
-const valid_key_presses = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
+const VALID_KEY_PRESSES = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
 const local_move_queue = [];
 let local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
+let move_mode; // values are defined in the ACTION_MOVE_ constants
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 15;
@@ -24,15 +25,15 @@ let font_size = DEFAULT_FONT_SIZE;
 
 const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rendering. Due to how setTimeout works, may be up to 16 ms late
 
+let new_game_overlay_visible = false;
+
 ///////////
 // Server constants and global variables
 ///////////
-let tick_time = 500; // ms to wait before rendering each new frame
-let game_on; // when game_on, the game will loop every ~tick_time ms, increasing the game_tick and advancing the simulation
-let game_tick_server;
-let last_starting_configuration;
+
+const DEFAULT_TICK_SPEED = 500; // default ms to wait before rendering each new frame
+
 let game = null;
-let move_mode; // values are defined in the ACTION_MOVE_ constants
 
 const GAME_MODE_FFA = 1;
 const GAME_MODE_FFA_CUST = 2;
@@ -64,7 +65,6 @@ const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Inc
 const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
 const ENTITY_TYPE_INFANTRY = 205;
 
-
 const ACTION_MOVE_NORMAL = 1;
 const ACTION_MOVE_HALF = 2;
 const ACTION_MOVE_ALL = 3;
@@ -77,6 +77,21 @@ const ACTION_MOVE_NONE = 5;
 // Local App classes and functions
 ///////////
 
+function show_new_game_overlay() {
+    if(game.game_on) {
+        toggle_pause()
+    }
+    
+    document.getElementById('mad-overlay').style.display = 'block';
+    new_game_overlay_visible = true;
+}
+function hide_new_game_overlay() {
+    document.getElementById('mad-overlay').style.display = 'none';
+    new_game_overlay_visible = false;
+    
+    toggle_pause() // TODO currently this will always unpause the game, even if the game was paused when the overlay was opened. Evaluate desire behavior
+}
+
 function game_loop_client() {
     if (true) {
         render_board(); // Redraw the game canvas        
@@ -84,6 +99,76 @@ function game_loop_client() {
     setTimeout( () => { window.requestAnimationFrame(() => game_loop_client()); }, RENDER_REFRESH_TIME) // therefore each game loop will last at least tick_time ms    
 }
 
+function add_slider(overlay_inner, id_prefix, display_name, min, max, step, starting_val) {
+
+    let header_p = document.createElement('p');
+    let slider_div = document.createElement('div');
+    let slider_range = document.createElement('input')
+    
+    let lbl_slider_val = document.createElement('label')
+    lbl_slider_val.id = `${id_prefix}_label`;
+    lbl_slider_val.htmlFor = 'slider_range';
+    lbl_slider_val.innerHTML= starting_val;
+
+    header_p.innerHTML = display_name
+    slider_range.type = 'range';
+    slider_range.setAttribute('name', display_name);
+    slider_range.setAttribute('min', min)
+    slider_range.setAttribute('max', max)
+    slider_range.setAttribute('step', step)
+    slider_range.value = starting_val;
+    slider_range.addEventListener('change', function() {
+        document.getElementById(`${id_prefix}_label`).innerHTML = `${slider_range.value}`;
+    }, false);
+
+    overlay_inner.appendChild(slider_div);
+    slider_div.appendChild(header_p);
+    slider_div.appendChild(slider_range);
+    slider_div.appendChild(lbl_slider_val);
+}
+
+function populate_new_game_overlay(){
+    let overlay = document.getElementById('mad-overlay');
+    
+    let overlay_container_box = document.createElement('div');
+    overlay_container_box.id = 'mad-overlay-container';
+    overlay_container_box.addEventListener('click', function(e) { e.stopPropagation(); }); // prevent clicking on the new game box from closing the overlay
+    overlay.appendChild(overlay_container_box)
+    
+    let overlay_inner = document.createElement('div');
+    overlay_inner.id = 'mad-overlay-inner';
+    overlay_container_box.appendChild(overlay_inner)
+    
+    let input_name = document.createElement('input');
+    input_name.id = 'input_name';
+    input_name.type = 'text';
+    input_name.value='Player One';
+    
+    let lbl_input = document.createElement('label');
+    lbl_input.id = 'lbl_input_name';
+    lbl_input.htmlFor = 'input_name';
+    lbl_input.innerHTML='Name';
+
+    overlay_inner.appendChild(lbl_input);
+    overlay_inner.appendChild(input_name);
+
+    add_slider(overlay_inner, 'bots', 'Bots', 1, 10, 1, 3)
+    add_slider(overlay_inner, 'mountains', 'Mountain Spawn Rate', 1, 100, 1, 15)
+    add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5)
+    add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5)
+    
+    
+    let ok_button = document.createElement('button');
+    ok_button.innerHTML = 'Create Game'
+    ok_button.addEventListener('click', launch_new_game);
+    overlay_inner.appendChild(ok_button);
+       
+}
+
+function launch_new_game(event) {
+    console.log('launch new game!')
+
+}
 //game init on server, event handlers on client side, canvas/context def on client
 function init_client(){
     console.log('Initializing a Madmirals instance')
@@ -91,7 +176,7 @@ function init_client(){
     init_server();
     // Add event listener on keydown
     document.addEventListener('keydown', (event) => {
-        if (valid_key_presses.includes(event.key)) {
+        if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
             handle_key_press(event.key)
         }
     }, false);
@@ -99,12 +184,13 @@ function init_client(){
     move_mode = ACTION_MOVE_NORMAL
 
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
+    canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
     context = canvas.getContext('2d');
 
     canvas.height = CellClient.height*game.num_rows // canvas width must match cols*col_size
     canvas.width = CellClient.width*game.num_cols // canvas width must match cols*col_size
 
-    canvas.addEventListener('mousedown', function (event) { mouse_handler(event) }, false); //our main click handler function
+    canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
     canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
     canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
     drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
@@ -113,6 +199,8 @@ function init_client(){
     create_client_cells(game.num_rows, game.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
     
+    populate_new_game_overlay();
+
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
@@ -322,7 +410,10 @@ function render_board() {
     }); 
 
     // display the turn number
-    document.getElementById('turn_counter').innerText = `Turn ${game_tick_local}`
+    if (game_tick_local) {
+        document.getElementById('turn_counter').innerText = `Turn ${game_tick_local}`
+        document.getElementById('turn_counter_scoreboard').innerText = `Turn ${game_tick_local}`
+    }    
 }
 
 // Show the user where they are by highlighting the active cell
@@ -347,7 +438,7 @@ function highlight_active_cell() {
     }); 
 }
 
-function mouse_handler(event) {
+function canvas_mouse_handler(event) {
     event.preventDefault() // prevent default mouse behavior, mainly preventing middle click from activating scroll mode
         
     if (event.button == 0) { //left click
@@ -425,7 +516,7 @@ function select_cell_at(x, y) { // returns true if the active cell changed, and 
 }
 
 function handle_key_press(key_key) {
-    //If they user has pressed a movement key (currently only WASD supported), then try to move the active cell
+    //If they user has pressed a movement key, then try to move the active cell
     let dir, target_row, target_col;
     
     
@@ -577,14 +668,13 @@ function drag_canvas_event_handler(canvas_element) {
     }
 }
 
-
-function toggle_pause() { //TODO remove this
-    //console.log('This button has been phased out!')
-    console.log('Toggling pause')
-    game_on = !game_on //game_loop will keep running when game_on is false but will not update the board or render it
+function toggle_pause() { //single player mode only. 
+// In order to keep the faux separation of server and client, this function cannot access game_on directly. 
+// This function would become an event handler when node mode activated
+    let new_pause_status = toggle_pause_server() 
     
     // Update the button text to indicate the action it would perform
-    document.getElementById('pause_resume_button').innerText = game_on ? 'Pause' : 'Play';
+    document.getElementById('pause_resume_button').innerText = new_pause_status ? 'Pause' : 'Play';
 }
 
 function client_receives_game_state_here(json) {
@@ -660,20 +750,20 @@ function client_receives_game_state_here(json) {
 
 function game_loop_server() {
     // console.log('tick')
-    if (game_on) {
-        game_tick_server++;
+    if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
         check_for_game_over();
-        update_game(); // check each cell to see if it should be alive next turn and update the .alive tag                
+        game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
         send_game_state_to_players();
     }
-    setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, tick_time) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
+    setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
 }
 
 class Game {
     constructor(n_rows, n_cols, fog_of_war) {
         this.players = []
         this.player_turn_order = []
-        this.game_state = GAME_STATUS_INIT
+        this.status = GAME_STATUS_INIT
+        this.game_on; // when game_on, the game will loop every ~tick_speed ms, increasing the game_tick and advancing the simulation
         this.fog_of_war = fog_of_war;
         this.num_rows = n_rows
         this.num_cols =  n_cols
@@ -681,6 +771,9 @@ class Game {
         this.initialize_cells();
         this.astar_board = new ABoard(this.num_rows, this.num_cols, 0);
         this.astar = new AStar(this.astar_board);
+        this.game_tick_server = -1;
+        this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
+
         // this.astar.print_board([0,0], [1,1]);
     }
 
@@ -704,6 +797,206 @@ class Game {
                 id++;;
             }
         }
+    }
+
+    tick() { // advance game by 1 tick
+        if (this.game_on) {
+            this.game_tick_server++;
+            //growth phase
+            this.cells.forEach(cell => {
+                if(cell.owner != null) {
+                    if (cell.entity == ENTITY_TYPE_ADMIRAL && this.game_tick_server % 2 == 0) { // admiral grow every 2 turns
+                        cell.troops++;
+                    } else if (cell.entity == ENTITY_TYPE_SHIP && this.game_tick_server % 16 == 0) {
+                        cell.troops++;
+                    } else if (cell.entity == ENTITY_TYPE_SHIP_2 && this.game_tick_server % 6 == 0) {
+                        cell.troops++;
+                    } else if (cell.entity == ENTITY_TYPE_SHIP_3 && this.game_tick_server % 2 == 0) {
+                        cell.troops++;
+                    } else if (cell.entity == ENTITY_TYPE_SHIP_4 && this.game_tick_server % 1 == 0) {
+                        cell.troops++;
+                    } else if (cell.terrain == TERRAIN_TYPE_SWAMP && this.game_tick_server % 1 == 0) { // swamps drain every turn
+                        cell.troops--;
+                        if (cell.troops < 0) { //check if the swamp killed off the last troops in the cell
+                            cell.troops = 0;
+                            cell.owner = null;
+                        }
+                    } else if (this.game_tick_server % 25 == 0) { // regular owned cells grow every 25 turns
+                        cell.troops++;
+                    }
+                }
+            });
+    
+            // Queue up bot behaviors
+            if (this.game_tick_server > 2) {
+                this.players.forEach(player => {
+                    if (!player.is_human) {
+                        player.take_move();
+                    }
+                });  
+            };      
+            
+            // Execute the next queued move for each player
+            for (let i = 0; i < this.players.length; i++) {
+                let player;
+                if (this.game_tick_server % 2 == 0) { // flip flop the turn order each round
+                    player = this.players[i];
+                } else {
+                    player = this.players[this.players.length - i - 1];
+                }
+    
+                let valid_move = false;
+                let move, troops_to_move;
+                while (!valid_move && player.queued_moves.length>0) {
+                    move = player.queued_moves.shift();
+                    
+                    let cell_id_source, cell_id_dest;
+                    cell_id_source = move.row * this.num_cols + move.col; // 0 is the topleft most cells, and there this.num_cols cols per row        
+                    cell_id_dest = move.target_row * this.num_cols + move.target_col
+    
+                    // Only complete the move if the queuer owns the source cell
+                    if (this.cells[cell_id_source].owner == move.queuer) {                   
+                        // Is it a valid destination?
+                        if (this.cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
+                            valid_move = false;
+                        } else {
+                            valid_move = true;
+    
+                            if (move.action == ACTION_MOVE_NORMAL) { 
+                                troops_to_move =  this.cells[cell_id_source].troops - 1 ;
+                            } else if (move.action == ACTION_MOVE_ALL) { 
+                                //if (this.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL && this.cells[cell_id_source].entity != ENTITY_TYPE_SHIP) {
+                                    if (this.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL) {
+                                    troops_to_move = this.cells[cell_id_source].troops;
+                                } else {troops_to_move = this.cells[cell_id_source].troops - 1;}
+                                
+                            } else { //right click
+                                troops_to_move =  Math.floor(this.cells[cell_id_source].troops/2);
+                            }                
+    
+                            troops_to_move = Math.max(troops_to_move, 0); // I believe this will fix a bug where sometimes moving out of a swamp with 1 troop left would result in a neutral cell gaining +1 troops
+                            
+                            // If the queuer also owns the destination cell, stack their troops together
+                            if (this.cells[cell_id_dest].owner == move.queuer) {
+                                
+                                this.cells[cell_id_source].troops -= troops_to_move;
+                                this.cells[cell_id_dest].troops += troops_to_move;
+    
+                            } else { // Otherwise invade the destination cell
+                                this.cells[cell_id_source].troops -= troops_to_move;
+                                this.cells[cell_id_dest].troops -= troops_to_move;
+                                if (this.cells[cell_id_dest].troops < 0) {
+                                    let old_owner = this.cells[cell_id_dest].owner;
+                                    
+                                    this.cells[cell_id_dest].troops *= -1;
+                                    this.cells[cell_id_dest].owner = move.queuer;
+    
+                                    if (this.cells[cell_id_dest].entity == ENTITY_TYPE_ADMIRAL) {
+                                        this.attempt_takeover(old_owner, move.queuer);
+                                    };                                
+                                };
+                            };
+    
+                            if (this.cells[cell_id_dest].owner == move.queuer) { //either we owned it already or it was just taken over
+                                //If we are trying to MOVE_ALL a ship, run a check on the appropriate logic (unload troops, move ship, or combine ships)
+                                if([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(this.cells[cell_id_source].entity) ) { //} && move.action == ACTION_MOVE_ALL) { 
+                                    this.try_to_move_ship(cell_id_source, cell_id_dest, move.action);
+                                    
+                                };
+                            };
+                            
+                            if (this.cells[cell_id_source].troops <= 0) { 
+                                this.cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
+                            };
+                        } ;
+                    };
+                };
+            };
+        };
+    }
+
+    try_to_move_ship(cell_id_source, cell_id_dest, action) {
+        // Assumes this a valid move where the same player owns both cells and the action is ACTION_MOVEALL. 
+        // This function calculates whether or not to move the ship and combines ships if appropriate. Also makes sure to leave 1 troop behind if a ship remains in source cell
+        let source_entity = this.cells[cell_id_source].entity;
+        let dest_entity = this.cells[cell_id_dest].entity;
+        let dest_terrain = this.cells[cell_id_dest].terrain;
+        
+    
+        if ([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4, null].includes(dest_entity) && // make sure we're not moving into an admiral
+                    [TERRAIN_TYPE_WATER, TERRAIN_TYPE_SWAMP].includes(dest_terrain)) { // make sure we're able to put a ship here
+                
+            let mast_count = 0;
+            switch (source_entity) {
+                case ENTITY_TYPE_SHIP: mast_count += 1; break;
+                case ENTITY_TYPE_SHIP_2: mast_count += 2; break;
+                case ENTITY_TYPE_SHIP_3: mast_count += 3; break;
+                case ENTITY_TYPE_SHIP_4: mast_count += 4; break;
+            };
+            
+            switch (dest_entity) {
+                case ENTITY_TYPE_SHIP: mast_count += 1; break;
+                case ENTITY_TYPE_SHIP_2: mast_count += 2; break;
+                case ENTITY_TYPE_SHIP_3: mast_count += 3; break;
+                case ENTITY_TYPE_SHIP_4: mast_count += 4; break;
+            };
+            
+            switch (mast_count) {
+                case 1: 
+                    this.cells[cell_id_source].entity = null;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP;
+                    break;
+                case 2: 
+                    this.cells[cell_id_source].entity = null;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_2;
+                    break;
+                case 3: 
+                    this.cells[cell_id_source].entity = null;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_3;
+                    break;
+                case 4: 
+                    this.cells[cell_id_source].entity = null;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
+                    break;
+                case 5: 
+                    this.cells[cell_id_source].entity = ENTITY_TYPE_SHIP;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
+                    if(action == ACTION_MOVE_ALL) {this.cells[cell_id_source].troops = 1}
+                    break;
+                case 6: 
+                    this.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_2;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
+                    if(action == ACTION_MOVE_ALL) {this.cells[cell_id_source].troops = 1}
+                    break;
+                case 7: 
+                    this.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_3;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
+                    if(action == ACTION_MOVE_ALL) {this.cells[cell_id_source].troops = 1}
+                    break;
+                case 8: 
+                    this.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_4;
+                    this.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
+                    if(action == ACTION_MOVE_ALL) {this.cells[cell_id_source].troops = 1}
+                    break;                    
+            };    
+            
+        } else if (action ==ACTION_MOVE_ALL) { // instead of abandoning ship, leave one troop behind
+            this.cells[cell_id_source].troops += 1
+        };
+            
+    }
+
+    attempt_takeover(victim_id, culprit_id) {
+    // When one player captures another's admiral, see if they nabbed their last one. If, so the player is out of the game and their remaining cells transfer to the capturer
+    let admirals_remaining = this.players[victim_id].admiral_count();
+        if (admirals_remaining == 0) { //admiral captured!
+            this.cells.forEach(cell => {
+                if(cell.owner == victim_id) {
+                    cell.owner = culprit_id;
+                    cell.troops = Math.max(Math.floor(cell.troops/2), 1);
+                };
+            });  
+        };
     }
     
 }
@@ -1012,207 +1305,7 @@ class Bot {
     };
 }
 
-function try_to_move_ship(cell_id_source, cell_id_dest, action) {
-    // Assumes this a valid move where the same player owns both cells and the action is ACTION_MOVEALL. 
-    // This function calculates whether or not to move the ship and combines ships if appropriate. Also makes sure to leave 1 troop behind if a ship remains in source cell
-    let source_entity = game.cells[cell_id_source].entity;
-    let dest_entity = game.cells[cell_id_dest].entity;
-    let dest_terrain = game.cells[cell_id_dest].terrain;
-    
 
-    if ([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4, null].includes(dest_entity) && // make sure we're not moving into an admiral
-                [TERRAIN_TYPE_WATER, TERRAIN_TYPE_SWAMP].includes(dest_terrain)) { // make sure we're able to put a ship here
-            
-        let mast_count = 0;
-        switch (source_entity) {
-            case ENTITY_TYPE_SHIP: mast_count += 1; break;
-            case ENTITY_TYPE_SHIP_2: mast_count += 2; break;
-            case ENTITY_TYPE_SHIP_3: mast_count += 3; break;
-            case ENTITY_TYPE_SHIP_4: mast_count += 4; break;
-        };
-        
-        switch (dest_entity) {
-            case ENTITY_TYPE_SHIP: mast_count += 1; break;
-            case ENTITY_TYPE_SHIP_2: mast_count += 2; break;
-            case ENTITY_TYPE_SHIP_3: mast_count += 3; break;
-            case ENTITY_TYPE_SHIP_4: mast_count += 4; break;
-        };
-        
-        switch (mast_count) {
-            case 1: 
-                game.cells[cell_id_source].entity = null;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP;
-                break;
-            case 2: 
-                game.cells[cell_id_source].entity = null;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_2;
-                break;
-            case 3: 
-                game.cells[cell_id_source].entity = null;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_3;
-                break;
-            case 4: 
-                game.cells[cell_id_source].entity = null;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                break;
-            case 5: 
-                game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
-                break;
-            case 6: 
-                game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_2;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
-                break;
-            case 7: 
-                game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_3;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
-                break;
-            case 8: 
-                game.cells[cell_id_source].entity = ENTITY_TYPE_SHIP_4;
-                game.cells[cell_id_dest].entity = ENTITY_TYPE_SHIP_4;
-                if(action == ACTION_MOVE_ALL) {game.cells[cell_id_source].troops = 1}
-                break;                    
-        };    
-        
-    } else if (action ==ACTION_MOVE_ALL) { // instead of abandoning ship, leave one troop behind
-        game.cells[cell_id_source].troops += 1
-    };
-        
-}
-
-function update_game() { // advance game by 1 tick
-    if (game_on) {
-        //growth phase
-        game.cells.forEach(cell => {
-            if(cell.owner != null) {
-                if (cell.entity == ENTITY_TYPE_ADMIRAL && game_tick_server % 2 == 0) { // admiral grow every 2 turns
-                    cell.troops++;
-                } else if (cell.entity == ENTITY_TYPE_SHIP && game_tick_server % 8 == 0) {
-                    cell.troops++;
-                } else if (cell.entity == ENTITY_TYPE_SHIP_2 && game_tick_server % 4 == 0) {
-                    cell.troops++;
-                } else if (cell.entity == ENTITY_TYPE_SHIP_3 && game_tick_server % 2 == 0) {
-                    cell.troops++;
-                } else if (cell.entity == ENTITY_TYPE_SHIP_4 && game_tick_server % 1 == 0) {
-                    cell.troops++;
-                } else if (cell.terrain == TERRAIN_TYPE_SWAMP && game_tick_server % 1 == 0) { // swamps drain every turn
-                    cell.troops--;
-                    if (cell.troops < 0) { //check if the swamp killed off the last troops in the cell
-                        cell.troops = 0;
-                        cell.owner = null;
-                    }
-                } else if (game_tick_server % 25 == 0) { // regular owned cells grow every 25 turns
-                cell.troops++;
-                }
-            }
-        });
-
-        // Queue up bot behaviors
-        if (game_tick_server > 2) {
-            game.players.forEach(player => {
-                if (!player.is_human) {
-                    player.take_move();
-                }
-            });  
-        };      
-        
-        // Execute the next queued move for each player
-        for (let i = 0; i < game.players.length; i++) {
-            let player;
-            if (game_tick_server % 2 == 0) { // flip flop the turn order each round
-                player = game.players[i];
-            } else {
-                player = game.players[game.players.length - i - 1];
-            }
-
-            let valid_move = false;
-            let move, troops_to_move;
-            while (!valid_move && player.queued_moves.length>0) {
-                move = player.queued_moves.shift();
-                
-                let cell_id_source, cell_id_dest;
-                cell_id_source = move.row * game.num_cols + move.col; // 0 is the topleft most cells, and there game.num_cols cols per row        
-                cell_id_dest = move.target_row * game.num_cols + move.target_col
-
-                // Only complete the move if the queuer owns the source cell
-                if (game.cells[cell_id_source].owner == move.queuer) {                   
-                    // Is it a valid destination?
-                    if (game.cells[cell_id_dest].terrain == TERRAIN_TYPE_MOUNTAIN) {
-                        valid_move = false;
-                    } else {
-                        valid_move = true;
-
-                        if (move.action == ACTION_MOVE_NORMAL) { 
-                            troops_to_move =  game.cells[cell_id_source].troops - 1 ;
-                        } else if (move.action == ACTION_MOVE_ALL) { 
-                            //if (game.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL && game.cells[cell_id_source].entity != ENTITY_TYPE_SHIP) {
-                                if (game.cells[cell_id_source].entity != ENTITY_TYPE_ADMIRAL) {
-                                troops_to_move = game.cells[cell_id_source].troops;
-                            } else {troops_to_move = game.cells[cell_id_source].troops - 1;}
-                            
-                        } else { //right click
-                            troops_to_move =  Math.floor(game.cells[cell_id_source].troops/2);
-                        }                
-
-                        troops_to_move = Math.max(troops_to_move, 0); // I believe this will fix a bug where sometimes moving out of a swamp with 1 troop left would result in a neutral cell gaining +1 troops
-                        
-                        // If the queuer also owns the destination cell, stack their troops together
-                        if (game.cells[cell_id_dest].owner == move.queuer) {
-                            
-                            game.cells[cell_id_source].troops -= troops_to_move;
-                            game.cells[cell_id_dest].troops += troops_to_move;
-
-                        } else { // Otherwise invade the destination cell
-                            game.cells[cell_id_source].troops -= troops_to_move;
-                            game.cells[cell_id_dest].troops -= troops_to_move;
-                            if (game.cells[cell_id_dest].troops < 0) {
-                                let old_owner = game.cells[cell_id_dest].owner;
-                                
-                                game.cells[cell_id_dest].troops *= -1;
-                                game.cells[cell_id_dest].owner = move.queuer;
-
-                                if (game.cells[cell_id_dest].entity == ENTITY_TYPE_ADMIRAL) {
-                                    attempt_takeover(old_owner, move.queuer);
-                                };                                
-                            };
-                        };
-
-                        if (game.cells[cell_id_dest].owner == move.queuer) { //either we owned it already or it was just taken over
-                            //If we are trying to MOVE_ALL a ship, run a check on the appropriate logic (unload troops, move ship, or combine ships)
-                            if([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(game.cells[cell_id_source].entity) ) { //} && move.action == ACTION_MOVE_ALL) { 
-                                try_to_move_ship(cell_id_source, cell_id_dest, move.action);
-                                
-                            };
-                        };
-                        
-                        if (game.cells[cell_id_source].troops <= 0) { 
-                            game.cells[cell_id_source].owner = null; //renounce ownership if there are no troops left on the starting cell
-                        };
-                    } ;
-                };
-            };
-        };
-    };
-}
-
-function attempt_takeover(victim_id, culprit_id) {
-// When one player captures another's admiral, see if they nabbed their last one. If, so the player is out of the game and their remaining cells transfer to the capturer
-console.log(victim_id)    
-let admirals_remaining = game.players[victim_id].admiral_count();
-    // console.log(`Admiral captured! Victim: ${victim_id} Remaining admirals: ${admirals_remaining}`);
-
-    if (admirals_remaining == 0) { //admiral captured!
-        game.cells.forEach(cell => {
-            if(cell.owner == victim_id) {
-                cell.owner = culprit_id;
-                cell.troops = Math.max(Math.floor(cell.troops/2), 1);
-            };
-        });  
-    };
-}
 
 function init_server() {
     let fog_of_war = Math.random() > .5;
@@ -1256,8 +1349,8 @@ function init_server() {
     spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
     spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
-    game_tick_server = -1
-    game_on = true; // start with the simulation running instead of paused
+    game.status = GAME_STATUS_IN_PROGRESS
+    game.game_on = true; // start with the simulation running instead of paused
     send_game_state_to_players();
     game_loop_server()
 }
@@ -1341,7 +1434,7 @@ function server_receives_cancel_queue(player_id) {
     game.players[player_id].queued_moves.length = 0;
 }
 
-function should_be_visible(cell, player_id) {
+function should_be_visible(cell, player_id, fog_of_war_distance) {
     if (!game.fog_of_war) {
         return true;
     // } else if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) { 
@@ -1349,25 +1442,44 @@ function should_be_visible(cell, player_id) {
     } else if (cell.owner == player_id) { 
         return true; 
     
-    } else if (true){
-        return (get_owned_neighbors(cell, player_id) > 0);
+    } else {
+        // let distance = 1
+        // if ([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
+        //     distance = 2;
+        // }
+        return (get_owned_neighbors(cell, player_id, fog_of_war_distance) > 0);
     }
 }
 
-function get_owned_neighbors(cell, player_id) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
+function get_owned_neighbors(cell, player_id, fog_of_war_distance) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
     let num_neighbors = 0;
 
-    if (cell.row > 0 && cell.col > 0)                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col-1).owner    == player_id) ? 1 : 0; }; // top left
-    if (cell.row > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col).owner      == player_id) ? 1 : 0; }; // top
-    if (cell.row > 0 && cell.col < game.num_cols - 1)                       { num_neighbors += (get_cell_by_coords(cell.row-1, cell.col+1).owner    == player_id) ? 1 : 0; }; // top right
-    if (cell.col < game.num_cols - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col+1).owner      == player_id) ? 1 : 0; }; // right
-    if ((cell.row < game.num_rows - 1) && cell.col < (game.num_cols - 1))   { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col+1).owner    == player_id) ? 1 : 0; }; // bottom right
-    if (cell.row < game.num_rows - 1)                                       { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col).owner      == player_id) ? 1 : 0; }; // bottom
-    if ((cell.row < game.num_rows - 1) && cell.col > 0)                     { num_neighbors += (get_cell_by_coords(cell.row+1, cell.col-1).owner    == player_id) ? 1 : 0; }; // bottom left
-    if (cell.col > 0)                                                       { num_neighbors += (get_cell_by_coords(cell.row, cell.col-1).owner      == player_id) ? 1 : 0; }; // left
-        
+    let cells_to_check = [
+        [cell.row-1, cell.col-1],[cell.row-1, cell.col],[cell.row-1, cell.col+1],
+        [cell.row, cell.col-1],[cell.row, cell.col+1],
+        [cell.row+1, cell.col-1],[cell.row+1, cell.col],[cell.row+1, cell.col+1]];
+
+    if (fog_of_war_distance > 1) {
+        cells_to_check = cells_to_check.concat( 
+            [
+                [cell.row-2, cell.col-2],[cell.row-2, cell.col-1],[cell.row-2, cell.col],[cell.row-2, cell.col+1],[cell.row-2, cell.col+2],
+                [cell.row-1, cell.col-2],[cell.row-1, cell.col-1],[cell.row-1, cell.col],[cell.row-1, cell.col+1],[cell.row-1, cell.col+2],
+                [cell.row, cell.col-2],[cell.row, cell.col-1],[cell.row, cell.col+1],[cell.row, cell.col+2],
+                [cell.row+1, cell.col-2],[cell.row+1, cell.col-1],[cell.row+1, cell.col],[cell.row+1, cell.col+1],[cell.row+1, cell.col+2],
+                [cell.row+2, cell.col-2],[cell.row+2, cell.col-1],[cell.row+2, cell.col],[cell.row+2, cell.col+1],[cell.row+2, cell.col+2],
+            ]
+        );
+    };
+
+    cells_to_check.forEach(cell => {
+        if(cell[0] >= 0 && cell[1] >= 0 && cell[0] < game.num_rows && cell[1] < game.num_cols) {
+            num_neighbors += (get_cell_by_coords(cell[0], cell[1]).owner == player_id) ? 1 : 0; 
+        };
+    });
     return num_neighbors
 }
+
+
 
 function get_cell_by_coords(row, col) { // Returns the server cell object at the given row and column
     return game.cells[row*game.num_cols+col]
@@ -1390,16 +1502,18 @@ function send_game_state_to(player_id) {
 
     // Start with header information about the game
     let game_string = '{ "game": {' +
-        `"state" : "${game_on}",` +
-        `"turn": "${game_tick_server}",` +
+        `"state" : "${game.game_on}",` +
+        `"turn": "${game.game_tick_server}",` +
         `"row_count": "${game.num_rows}",` +
         `"col_count": "${game.num_cols}",` +
         `"next_queue_id": "${next_queue_id}"` +
         '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
 
+    
     // Then loop through and add info about each visible cell
+    let fog_of_war_distance = 1; // if 2 or greater, the player can see 2 blocks away from them instead of just 1
     game.cells.forEach(cell => {
-        if (should_be_visible(cell, player_id)) {
+        if (should_be_visible(cell, player_id, fog_of_war_distance)) {
             let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
             if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
             if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
@@ -1464,14 +1578,21 @@ function check_for_game_over() {
     };
 
     if (remaining_humans_count == 0) {
-        game_on = false;
+        game.game_on = false;
         console.log('Game over! Humans lose.'); // TODO pass this info on to the client
         alert('Game over! Humans lose.'); // TODO pass this info on to the client //placeholder for now
         
     
     } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
-        game_on = false;
+        game.game_on = false;
         console.log(`Game over! Player (TBD) wins!!!`); // TODO pass this info on to the client
         alert(`You win! Congrats!`); // TODO pass this info on to the client //placeholder for now
     };
+}
+
+
+function toggle_pause_server() {
+    console.log('Toggling pause')
+    game.game_on = !game.game_on //game_loop will keep running when game.game_on is false but will not update the board or render it
+    return game.game_on
 }
