@@ -112,6 +112,7 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
 
     header_p.innerHTML = display_name
     slider_range.type = 'range';
+    slider_range.id = `${id_prefix}_range`
     slider_range.setAttribute('name', display_name);
     slider_range.setAttribute('min', min)
     slider_range.setAttribute('max', max)
@@ -125,6 +126,10 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_div.appendChild(header_p);
     slider_div.appendChild(slider_range);
     slider_div.appendChild(lbl_slider_val);
+
+    // # Fog of
+//     var x = document.createElement("INPUT");
+// x.setAttribute("type", "checkbox");
 }
 
 function populate_new_game_overlay(){
@@ -152,11 +157,12 @@ function populate_new_game_overlay(){
     overlay_inner.appendChild(lbl_input);
     overlay_inner.appendChild(input_name);
 
-    add_slider(overlay_inner, 'bots', 'Bots', 1, 10, 1, 3)
-    add_slider(overlay_inner, 'mountains', 'Mountain Spawn Rate', 1, 100, 1, 15)
-    add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5)
-    add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5)
-    
+    add_slider(overlay_inner, 'bots', 'Bots', 1, 10, 1, 3);
+    add_slider(overlay_inner, 'rows', 'Rows', 10, 30, 1, 15);
+    add_slider(overlay_inner, 'cols', 'Cols', 10, 45, 1, 15);
+    add_slider(overlay_inner, 'mountains', 'Mountain Spawn Rate', 1, 100, 1, 15);
+    add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5);
+    add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5);
     
     let ok_button = document.createElement('button');
     ok_button.innerHTML = 'Create Game'
@@ -168,7 +174,58 @@ function populate_new_game_overlay(){
 function launch_new_game(event) {
     console.log('launch new game!')
 
+    let player_name = document.getElementById('input_name').value;
+    let n_rows = document.getElementById('rows_range').value;
+    let n_cols = document.getElementById('cols_range').value;
+    
+    let num_bots = document.getElementById('bots_range').value;
+
+    let water_weight = 100;
+    let mountain_weight = document.getElementById('mountains_range').value;;
+    let ship_weight  = document.getElementById('ships_range').value;; 
+    let swamp_weight = document.getElementById('swamps_range').value;
+
+    let fog_of_war = false ; // TODO add to the overlay
+    console.log(player_name, num_bots, mountain_weight, ship_weight, swamp_weight);
+
+    game = new Game(n_rows, n_cols, fog_of_war);
+    game.add_human('12345678', player_name, '#0a5a07'); // todo add color selection
+    
+    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#0C0C0C', '#B9B165'];
+    const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
+                                'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
+                                'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
+                                'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
+                                'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
+                                'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
+    
+    for (let i = 0; i < num_bots; i++) {
+        let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
+        let bot_color = bot_color_options[bot_color_index];
+        bot_color_options.splice(bot_color_index, 1);
+
+        let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
+        let bot_name = bot_name_options[bot_name_index];
+        bot_name_options.splice(bot_name_index, 1);
+
+        game.add_bot('bot personality', bot_name, bot_color);
+
+    };
+
+    // console.log(`got here. num players = ${game.players.length}`)
+
+    spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+    spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+    
+    game.status = GAME_STATUS_IN_PROGRESS
+    //game.game_on = true; // start with the simulation running instead of paused
+    
+    new_game_client();
+    send_game_state_to_players();
+    
 }
+
+
 //game init on server, event handlers on client side, canvas/context def on client
 function init_client(){
     console.log('Initializing a Madmirals instance')
@@ -204,6 +261,15 @@ function init_client(){
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
+function new_game_client() {
+    //call this after a new game has been created at the server level
+    canvas.height = CellClient.height*game.num_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game.num_cols // canvas width must match cols*col_size
+    create_client_cells(game.num_rows, game.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    render_board(); // display the starting conditions for the sim
+  
+    window.requestAnimationFrame(() => game_loop_client()); // start the game loop
+}
 class CellClient {
     static width = DEFAULT_CANVAS_WIDTH;
     static height = DEFAULT_CANVAS_HEIGHT;
@@ -295,7 +361,6 @@ class CellClient {
         let x = this.col*CellClient.width + CellClient.width/2;
         let y = this.row*CellClient.height + CellClient.height/2;
         let radius = CellClient.width/2;
-        // num_points = Math.floor(Math.random(5)+2)
         let fillColor = (this.owner !=null) ? game.players[this.owner].color: CellClient.neutral_entity_color;
 
         this.context.save();
@@ -1399,6 +1464,7 @@ function spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight)
     ];
 
     game.cells.forEach(cell => {
+        // console.log(cell.id, cell.row, cell.col)
         if(cell.owner == null) {
             let result = weighted_choice(arr_options).value;
             if (result == ENTITY_TYPE_SHIP) {
