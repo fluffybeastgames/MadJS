@@ -4,7 +4,7 @@
 // Local App constants and global variables
 ///////////
 let canvas, context; // the canvas and context we will draw the game cells on
-const cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
+let cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
 let  game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
@@ -164,6 +164,38 @@ function populate_new_game_overlay(){
     add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5);
     add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5);
     
+    
+    //document.getElementById('id').checked
+    let lbl_fow = document.createElement('label')
+    lbl_fow.innerHTML='Fog of War';
+
+    let radio_fog_on = document.createElement('input');
+    radio_fog_on.id = 'radio_fog_on';
+    radio_fog_on.type = 'radio';
+    radio_fog_on.name='Fog of War';
+    radio_fog_on.value='On';
+    radio_fog_on.checked= true;
+    let lbl_fow_on = document.createElement('label')
+    lbl_fow_on.innerHTML='On';
+    
+    
+    let radio_fog_off = document.createElement('input');
+    radio_fog_off.id = 'radio_fog_off';
+    radio_fog_off.type = 'radio';
+    radio_fog_off.name='Fog of War';
+    radio_fog_off.value='Off';
+    let lbl_fow_off = document.createElement('label')
+    lbl_fow_off.innerHTML='Off';
+    
+    overlay_inner.appendChild(lbl_fow);
+    overlay_inner.appendChild(document.createElement('br'));
+    overlay_inner.appendChild(radio_fog_on);
+    overlay_inner.appendChild(lbl_fow_on);
+    overlay_inner.appendChild(document.createElement('br'));
+    overlay_inner.appendChild(radio_fog_off);
+    overlay_inner.appendChild(lbl_fow_off);
+    overlay_inner.appendChild(document.createElement('br'));
+    
     let ok_button = document.createElement('button');
     ok_button.innerHTML = 'Create Game'
     ok_button.addEventListener('click', launch_new_game);
@@ -181,13 +213,13 @@ function launch_new_game(event) {
     let num_bots = document.getElementById('bots_range').value;
 
     let water_weight = 100;
-    let mountain_weight = document.getElementById('mountains_range').value;;
-    let ship_weight  = document.getElementById('ships_range').value;; 
-    let swamp_weight = document.getElementById('swamps_range').value;
+    let mountain_weight = Number(document.getElementById('mountains_range').value);
+    let ship_weight  = Number(document.getElementById('ships_range').value);
+    let swamp_weight = Number(document.getElementById('swamps_range').value);
 
-    let fog_of_war = false ; // TODO add to the overlay
+    let fog_of_war = document.getElementById('radio_fog_on').checked
     console.log(player_name, num_bots, mountain_weight, ship_weight, swamp_weight);
-
+    
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', player_name, '#0a5a07'); // todo add color selection
     
@@ -214,15 +246,16 @@ function launch_new_game(event) {
 
     // console.log(`got here. num players = ${game.players.length}`)
 
-    spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
-    spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+    game.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+    game.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
     game.status = GAME_STATUS_IN_PROGRESS
     //game.game_on = true; // start with the simulation running instead of paused
     
     new_game_client();
-    send_game_state_to_players();
+    game.send_game_state_to_players();
     
+    hide_new_game_overlay()
 }
 
 
@@ -444,6 +477,7 @@ class CellClient {
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
     console.log('creating client cell grid')
+    cells_client = []; // reset the array of cells, in case this isn't first game of session
 
     let id;
     id = 0
@@ -818,12 +852,14 @@ function game_loop_server() {
     if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
         check_for_game_over();
         game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-        send_game_state_to_players();
+        game.send_game_state_to_players();
     }
     setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
 }
 
 class Game {
+    // game = new Game(n_rows, n_cols, fog_of_war, 1, human_player_info, num_bots, starting_troops, water_weight, mountain_weight, swamp_weight, ship_weight);
+    
     constructor(n_rows, n_cols, fog_of_war) {
         this.players = []
         this.player_turn_order = []
@@ -1063,7 +1099,140 @@ class Game {
             });  
         };
     }
+
+
+
+    distance_to_nearest_admiral(from_address) { // gets the Manhattan distance to the nearest admiral. Returns 999 if none found
+        let closest_entity = 999;
+        let ref_row = this.cells[from_address].row
+        let ref_col = this.cells[from_address].col
+        
+        this.cells.forEach(cell => {
+            // console.log(`Closest entity so far: ${closest_entity}`)
+            if (cell.entity == ENTITY_TYPE_ADMIRAL) {
+                let distance = Math.abs(ref_row - cell.row) + Math.abs(ref_col - cell.col)
+                if (distance > 0 && distance < closest_entity) {
+                    closest_entity = distance
+                };
+            };
+        });
+        
+        // console.log(`Closest entity ${closest_entity}`)
+        return closest_entity
     
+    }
+    
+    spawn_admirals(starting_troops) {
+        for (let i = 0; i < this.players.length; i++) {
+            let not_found = true;
+            while (not_found) {
+                let rand_cell_id = Math.floor(Math.random() * this.num_rows * this.num_cols);
+                if (this.cells[rand_cell_id].owner == null && this.distance_to_nearest_admiral(rand_cell_id) > MIN_DISTANCE_ADMIRALS) {
+                    this.cells[rand_cell_id].owner = i;
+                    this.cells[rand_cell_id].troops = starting_troops;
+                    this.cells[rand_cell_id].entity = ENTITY_TYPE_ADMIRAL;
+                    not_found = false;
+                }
+            } 
+        }
+    }
+    
+    spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight) {
+        let arr_options = [
+            {'value': TERRAIN_TYPE_WATER, 'weight':water_weight},
+            {'value': TERRAIN_TYPE_MOUNTAIN, 'weight':mountain_weight},
+            {'value': TERRAIN_TYPE_SWAMP, 'weight':swamp_weight},
+            {'value': ENTITY_TYPE_SHIP, 'weight':ship_weight},
+        ];
+        console.log(arr_options)
+        this.cells.forEach(cell => {
+            // console.log(cell.id, cell.row, cell.col)
+            if(cell.owner == null) {
+                let result = weighted_choice(arr_options).value;
+                // console.log(result)
+                if (result == ENTITY_TYPE_SHIP) {
+                    cell.terrain = TERRAIN_TYPE_WATER
+                    cell.entity = result
+                    cell.troops = Math.floor(Math.random()*30)+12
+                } else if (result == TERRAIN_TYPE_MOUNTAIN) {
+                    this.astar_board.cells[cell.id].traversable = false;
+                    cell.terrain = result; //TODO add check if this is a block
+                } else {
+                    cell.terrain = result;
+                }
+                // this.astar.print_board([0,0], [1,1]);
+            };
+        });
+    }
+    
+        
+    //An attempt at predicting what the server to client communication will look like
+    send_game_state_to_players() {
+        this.players.forEach(player => {
+            if (player.is_human) {
+                this.send_game_state_to(player.uid);
+            }
+        } );
+    }
+
+    send_game_state_to(player_id) {
+        // let player_id = 0;
+        
+        let next_queue_id = this.players[player_id].queued_moves.length > 0 ? this.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
+
+        // Start with header information about the game
+        let game_string = '{ "game": {' +
+            `"state" : "${this.game_on}",` +
+            `"turn": "${this.game_tick_server}",` +
+            `"row_count": "${this.num_rows}",` +
+            `"col_count": "${this.num_cols}",` +
+            `"next_queue_id": "${next_queue_id}"` +
+            '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
+
+        
+        // Then loop through and add info about each visible cell
+        let fog_of_war_distance = 1; // if 2 or greater, the player can see 2 blocks away from them instead of just 1
+        this.cells.forEach(cell => {
+            if (should_be_visible(cell, player_id, fog_of_war_distance)) {
+                let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
+                if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
+                if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
+                if (cell.entity != null) {cell_string += `, "entity":${cell.entity}`}
+                if (cell.troops != null) {cell_string += `, "troops":${cell.troops}`}
+                if (true) {cell_string += `, "visible":true`}
+    
+                cell_string += '}, '
+                game_string += cell_string ;
+            }
+            else if (cell.terrain != TERRAIN_TYPE_WATER || [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
+                let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
+                cell_string += `, "terrain":${TERRAIN_TYPE_MOUNTAIN}`
+                if (true) {cell_string += `, "visible":true`}
+    
+                cell_string += '}, '
+                game_string += cell_string ;
+            };
+        });
+
+        game_string = game_string.slice(0,-2); // remove the last two characters from the string - either remove a trailing ', ' or if no cells are included then then the '  ' from the end of the header
+        game_string += '], "scoreboard":[  '; // close the board loop and start adding the scoreboard
+        
+        for (let i = 0; i < this.players.length; i++) {
+            game_string += `{"display_name": "${this.players[i].display_name}", "troops": ${this.players[i].troop_count()}, "ships": ${this.players[i].ship_count()}, "admirals": ${this.players[i].admiral_count()}, "color": "${this.players[i].color}" }, `   
+        };
+
+        game_string = game_string.slice(0,-2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
+        game_string += '] }'; // close the scoreboard and whole json object
+        
+
+        let json_obj = JSON.parse(game_string);
+        
+        // console.log(game_string);    
+        // console.log(game_json.this.row_count);
+        client_receives_game_state_here(json_obj)
+        
+    }
+
 }
 
 
@@ -1371,7 +1540,6 @@ class Bot {
 }
 
 
-
 function init_server() {
     let fog_of_war = Math.random() > .5;
     // fog_of_war = false; // DEV
@@ -1394,6 +1562,7 @@ function init_server() {
                                 'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
                                 'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
                                 'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
+
     
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', 'Player One', '#0a5a07');
@@ -1411,76 +1580,16 @@ function init_server() {
 
     };
 
-    spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
-    spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+    game.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+    game.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
     game.status = GAME_STATUS_IN_PROGRESS
     game.game_on = true; // start with the simulation running instead of paused
-    send_game_state_to_players();
+    game.send_game_state_to_players();
     game_loop_server()
 }
 
-function distance_to_nearest_admiral(from_address) { // gets the Manhattan distance to the nearest admiral. Returns 999 if none found
-    let closest_entity = 999;
-    let ref_row = game.cells[from_address].row
-    let ref_col = game.cells[from_address].col
-    
-    game.cells.forEach(cell => {
-        // console.log(`Closest entity so far: ${closest_entity}`)
-        if (cell.entity == ENTITY_TYPE_ADMIRAL) {
-            let distance = Math.abs(ref_row - cell.row) + Math.abs(ref_col - cell.col)
-            if (distance > 0 && distance < closest_entity) {
-                closest_entity = distance
-            };
-        };
-    });
-    
-    // console.log(`Closest entity ${closest_entity}`)
-    return closest_entity
 
-}
-
-function spawn_admirals(starting_troops) {
-    for (let i = 0; i < game.players.length; i++) {
-        let not_found = true;
-        while (not_found) {
-            let rand_cell_id = Math.floor(Math.random() * game.num_rows * game.num_cols);
-            if (game.cells[rand_cell_id].owner == null && distance_to_nearest_admiral(rand_cell_id) > MIN_DISTANCE_ADMIRALS) {
-                game.cells[rand_cell_id].owner = i;
-                game.cells[rand_cell_id].troops = starting_troops;
-                game.cells[rand_cell_id].entity = ENTITY_TYPE_ADMIRAL;
-                not_found = false;
-            }
-        } 
-    }
-}
-
-function spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight) {
-    let arr_options = [
-        {'value': TERRAIN_TYPE_WATER, 'weight':water_weight},
-        {'value': TERRAIN_TYPE_MOUNTAIN, 'weight':mountain_weight},
-        {'value': TERRAIN_TYPE_SWAMP, 'weight':swamp_weight},
-        {'value': ENTITY_TYPE_SHIP, 'weight':ship_weight},
-    ];
-
-    game.cells.forEach(cell => {
-        // console.log(cell.id, cell.row, cell.col)
-        if(cell.owner == null) {
-            let result = weighted_choice(arr_options).value;
-            if (result == ENTITY_TYPE_SHIP) {
-                cell.terrain = TERRAIN_TYPE_WATER
-                cell.entity = result
-                cell.troops = Math.floor(Math.random()*30)+12
-            } else if (result == TERRAIN_TYPE_MOUNTAIN) {
-                game.astar_board.cells[cell.id].traversable = false;
-                cell.terrain = result; //TODO add check if this is a block
-            } else {
-                cell.terrain = result;
-            }
-            // game.astar.print_board([0,0], [1,1]);
-        };
-    });
-}
 
 function server_receives_new_queued_moved(player_id, new_move) {
     game.players[player_id].queued_moves.push(new_move);
@@ -1551,73 +1660,6 @@ function get_cell_by_coords(row, col) { // Returns the server cell object at the
     return game.cells[row*game.num_cols+col]
 }
 
-
-//An attempt at predicting what the server to client communication will look like
-function send_game_state_to_players() {
-    game.players.forEach(player => {
-        if (player.is_human) {
-            send_game_state_to(player.uid);
-        }
-    } );
-}
-
-function send_game_state_to(player_id) {
-    // let player_id = 0;
-    
-    let next_queue_id = game.players[player_id].queued_moves.length > 0 ? game.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
-
-    // Start with header information about the game
-    let game_string = '{ "game": {' +
-        `"state" : "${game.game_on}",` +
-        `"turn": "${game.game_tick_server}",` +
-        `"row_count": "${game.num_rows}",` +
-        `"col_count": "${game.num_cols}",` +
-        `"next_queue_id": "${next_queue_id}"` +
-        '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
-
-    
-    // Then loop through and add info about each visible cell
-    let fog_of_war_distance = 1; // if 2 or greater, the player can see 2 blocks away from them instead of just 1
-    game.cells.forEach(cell => {
-        if (should_be_visible(cell, player_id, fog_of_war_distance)) {
-            let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
-            if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
-            if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
-            if (cell.entity != null) {cell_string += `, "entity":${cell.entity}`}
-            if (cell.troops != null) {cell_string += `, "troops":${cell.troops}`}
-            if (true) {cell_string += `, "visible":true`}
-   
-            cell_string += '}, '
-            game_string += cell_string ;
-        }
-        else if (cell.terrain != TERRAIN_TYPE_WATER || [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
-            let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
-            cell_string += `, "terrain":${TERRAIN_TYPE_MOUNTAIN}`
-            if (true) {cell_string += `, "visible":true`}
-   
-            cell_string += '}, '
-            game_string += cell_string ;
-        };
-    });
-
-    game_string = game_string.slice(0,-2); // remove the last two characters from the string - either remove a trailing ', ' or if no cells are included then then the '  ' from the end of the header
-    game_string += '], "scoreboard":[  '; // close the board loop and start adding the scoreboard
-    
-    for (let i = 0; i < game.players.length; i++) {
-        game_string += `{"display_name": "${game.players[i].display_name}", "troops": ${game.players[i].troop_count()}, "ships": ${game.players[i].ship_count()}, "admirals": ${game.players[i].admiral_count()}, "color": "${game.players[i].color}" }, `   
-    };
-
-    game_string = game_string.slice(0,-2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
-    game_string += '] }'; // close the scoreboard and whole json object
-    
-
-    let json_obj = JSON.parse(game_string);
-    
-    // console.log(game_string);    
-    // console.log(game_json.game.row_count);
-    client_receives_game_state_here(json_obj)
-    
-}
 
 function check_for_game_over() {
     //if the game has been won, lost, or abandoned, mark it as such and alert the user

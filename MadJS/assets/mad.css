@@ -15,9 +15,9 @@
 #mad-overlay-container {
     position: fixed;
     display: block;
-    width: 50%;
+    width: 33%;
     height: 50%;
-    top: 25%;
+    top: 33%;
     left: 25%;
     /* right: 0;
     bottom: 0;*/
