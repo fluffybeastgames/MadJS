@@ -5,13 +5,15 @@
 ///////////
 let canvas, context; // the canvas and context we will draw the game cells on
 let cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
-let  game_tick_local;
+let game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
 const VALID_KEY_PRESSES = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
 const local_move_queue = [];
 let local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
 let move_mode; // values are defined in the ACTION_MOVE_ constants
+
+let sprite_sheet; //graphical goodness
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 15;
@@ -223,8 +225,7 @@ function launch_new_game(event) {
     let swamp_weight = Number(document.getElementById('swamps_range').value);
 
     let fog_of_war = document.getElementById('radio_fog_on').checked
-    console.log(player_name, num_bots, mountain_weight, ship_weight, swamp_weight);
-    
+ 
     game = new Game(n_rows, n_cols, fog_of_war);
     game.add_human('12345678', player_name, '#0a5a07'); // todo add color selection
     
@@ -272,6 +273,7 @@ function init_client(){
     // Add event listener on keydown
     document.addEventListener('keydown', (event) => {
         if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
+            event.preventDefault();
             handle_key_press(event.key)
         }
     }, false);
@@ -289,6 +291,15 @@ function init_client(){
     canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
     canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
     drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
+    
+    sprite_sheet = new Image();
+    sprite_sheet.onload = function() {
+        //context.drawImage(sprite_sheet, 10, 10);
+        console.log('sprite drawn')
+       
+    };
+    //sprite_sheet.src = './img/sample_sprite_sheet.png';
+    sprite_sheet.src = './img/sprites3.png';
 
     // create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
     create_client_cells(game.num_rows, game.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
@@ -355,7 +366,9 @@ class CellClient {
             if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
                 this.draw_star(13);
             } else if (this.entity == ENTITY_TYPE_SHIP) {
-                this.draw_star(3);
+                if (this.owner != null) { this.draw_circle();}
+                this.draw_sprite(ENTITY_TYPE_SHIP);
+                //this.draw_star(3);
             } else if (this.entity == ENTITY_TYPE_SHIP_2) {
                 this.draw_star(4);
             } else if (this.entity == ENTITY_TYPE_SHIP_3) {
@@ -390,6 +403,27 @@ class CellClient {
         this.context.fillStyle = game.players[this.owner].color;
         this.context.fill(); // apply the solid color
     
+    }
+
+    draw_sprite(entity) {
+        let sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight; // variable names via the docs https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage
+        
+        switch (entity) {
+            case ENTITY_TYPE_SHIP: 
+                sx = 0; 
+                sy = 0;
+                break;
+        };
+        
+        sWidth = 250;
+        sHeight = 250;
+        dx = this.col*CellClient.width;
+        dy = this.row*CellClient.height;
+        dWidth = CellClient.width;
+        dHeight = CellClient.height;
+
+        this.context.drawImage(sprite_sheet, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+        
     }
 
     draw_star(num_points=5) { // Draws an n-pointed star within the bounds of the cell, representing an Admiral or ship cell
@@ -481,7 +515,7 @@ class CellClient {
 };
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
-    console.log('creating client cell grid')
+    // console.log('creating client cell grid')
     cells_client = []; // reset the array of cells, in case this isn't first game of session
 
     let id;
@@ -1094,6 +1128,7 @@ class Game {
 
     attempt_takeover(victim_id, culprit_id) {
     // When one player captures another's admiral, see if they nabbed their last one. If, so the player is out of the game and their remaining cells transfer to the capturer
+    // console.log('attempt takeover - ', victim_id, culprit_id)
     let admirals_remaining = this.players[victim_id].admiral_count();
         if (admirals_remaining == 0) { //admiral captured!
             this.cells.forEach(cell => {
@@ -1149,12 +1184,10 @@ class Game {
             {'value': TERRAIN_TYPE_SWAMP, 'weight':swamp_weight},
             {'value': ENTITY_TYPE_SHIP, 'weight':ship_weight},
         ];
-        console.log(arr_options)
         this.cells.forEach(cell => {
             // console.log(cell.id, cell.row, cell.col)
             if(cell.owner == null) {
                 let result = weighted_choice(arr_options).value;
-                // console.log(result)
                 if (result == ENTITY_TYPE_SHIP) {
                     cell.terrain = TERRAIN_TYPE_WATER
                     cell.entity = result
@@ -1209,7 +1242,7 @@ class Game {
                 cell_string += '}, '
                 game_string += cell_string ;
             }
-            else if (cell.terrain != TERRAIN_TYPE_WATER || [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
+            else if (cell.terrain == TERRAIN_TYPE_MOUNTAIN || [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
                 let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
                 cell_string += `, "terrain":${TERRAIN_TYPE_MOUNTAIN}`
                 if (true) {cell_string += `, "visible":true`}
