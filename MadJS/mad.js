@@ -27,6 +27,11 @@ const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rend
 
 let new_game_overlay_visible = false;
 
+// var localStorage = window.localStorage; // TODO remove if this doesn't get implemented
+// window.localStorage.setItem('myKey', 'myValue');
+let myValue = localStorage.getItem('myKey');
+console.log(myValue)
+
 ///////////
 // Server constants and global variables
 ///////////
