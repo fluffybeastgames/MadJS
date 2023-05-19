@@ -38,22 +38,8 @@ console.log(myValue)
 // Server constants and global variables
 ///////////
 
-const DEFAULT_TICK_SPEED = 500; // default ms to wait before rendering each new frame
-
 let game = null;
 
-const GAME_MODE_FFA = 1;
-const GAME_MODE_FFA_CUST = 2;
-const GAME_MODE_REPLAY = 3;
-
-const GAME_STATUS_INIT = 0; // loading;
-const GAME_STATUS_READY = 1; // able to start;
-const GAME_STATUS_IN_PROGRESS = 2; //;
-const GAME_STATUS_PAUSE = 3; //;
-const GAME_STATUS_GAME_OVER_WIN = 4; // game instance is complete and can no longer be played;
-const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no longer be played;
-
-const MIN_DISTANCE_ADMIRALS = 5;
 
 ///////////
 // Shared constants
@@ -70,7 +56,7 @@ const ENTITY_TYPE_SHIP = 201;
 const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate;
 const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate;
 const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
-const ENTITY_TYPE_INFANTRY = 205;
+// const ENTITY_TYPE_INFANTRY = 205;
 
 const ACTION_MOVE_NORMAL = 1;
 const ACTION_MOVE_HALF = 2;
@@ -343,52 +329,111 @@ class CellClient {
         this.visible = false // can the user view this cell at the moment? If not, it should be blackened out
     }   
 
+    get_water_color() {
+        // game_tick_server
+        // context.fillStyle = "rgba(0, 0, 0, 0.2)";
+        //     cell.context.fillRect((cell.col-1)*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
+
+        if (game.game_tick_server % 200 > 100) {
+            return CellClient.high_tide_color;
+        }
+        else {
+            return CellClient.low_tide_color;
+        }
+
+    }
+
+    get_swamp_color() {
+        if (game.game_tick_server % 200 > 100) {
+            return CellClient.high_tide_color;
+        }
+        else {
+            return CellClient.swamp_color;
+        }
+    }
+
     draw_cell() {
         //First draw a grid around the cell
         //Draw outline around the cell
-        this.context.strokeStyle = CellClient.grid_color;
+
+        let water_color = this.get_water_color(); // different at low and hide tide
+        let swamp_color = this.get_swamp_color(); // different at low and hide tide
+        
+
+        this.context.strokeStyle = CellClient.water_color;
         this.context.lineWidth = 1;
         this.context.strokeRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
         
         if (this.visible) {
+
+
             if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
                 this.context.fillStyle = CellClient.mountain_color            
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
             } else if (this.terrain == TERRAIN_TYPE_SWAMP) {
-                this.context.fillStyle = CellClient.swamp_color            
+                this.context.fillStyle = swamp_color         
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
             } else {
-                this.context.fillStyle = CellClient.low_tide_color            
+                this.context.fillStyle = water_color            
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)    
             }
             
-            // If there is an admiral here, draw a star to represent it
-            if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
-                this.draw_star(13);
-            } else if (this.entity == ENTITY_TYPE_SHIP) {
-                if (this.owner != null) { this.draw_circle();}
-                this.draw_sprite(ENTITY_TYPE_SHIP);
-                //this.draw_star(3);
-            } else if (this.entity == ENTITY_TYPE_SHIP_2) {
-                this.draw_star(4);
-            } else if (this.entity == ENTITY_TYPE_SHIP_3) {
-                this.draw_star(5);
-            } else if (this.entity == ENTITY_TYPE_SHIP_4) {
-                this.draw_star(6);
+            if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
+                // this.draw_circle();
+                // this.draw_outline();
+                this.context.fillStyle = game.players[this.owner].color         
+                this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
                 
-
-            } else if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
-                this.draw_circle();
             } 
+
+            // this.draw_outline(water_color);
+            
+            if (this.terrain != TERRAIN_TYPE_WATER) { 
+                this.draw_sprite(this.terrain);
+            };
+
+            // // If there is an admiral here, draw a star to represent it
+            // if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
+            //     this.draw_star(5);
+            // } else if (this.entity != null) { 
+            //     this.draw_sprite(this.entity);
+            // };
+            if (this.entity != null) { 
+                this.draw_sprite(this.entity);
+            };
+            
+
 
             this.draw_troops();
         }
     }
 
+    draw_outline(color) {
 
-    // draw_ship(ship_type) {
-    //     this.draw_star()
-    // }
+        // this.context.strokeRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)    
+   
+        this.context.strokeStyle = color;    
+        let x, y, line_width;
+        line_width = 5
+        x = this.col*CellClient.width; // + line_width/2;
+        y = this.row*CellClient.height;
+        this.context.beginPath();
+        this.context.lineWidth = line_width;
+        this.context.moveTo(x + line_width/2,                       y + line_width/2);
+        this.context.lineTo(x+CellClient.width - line_width/2,      y + line_width/2);
+        this.context.lineTo(x+CellClient.width - line_width/2,      y+CellClient.height - line_width/2);
+        this.context.lineTo(x + line_width/2,                                      y+CellClient.height - line_width/2);
+        this.context.lineTo(x + line_width/2,                                         y);
+        
+        
+        
+        this.context.stroke();
+
+        // this.context.arc(x, y, radius, 0, 2 * Math.PI, false);
+        
+        // this.context.fill(); // apply the solid color
+
+    }
 
     draw_circle() {
         this.context.beginPath()
@@ -405,14 +450,39 @@ class CellClient {
     
     }
 
-    draw_sprite(entity) {
+    draw_sprite(entity_or_terrain) {
         let sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight; // variable names via the docs https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage
         
-        switch (entity) {
+        switch (entity_or_terrain) {
             case ENTITY_TYPE_SHIP: 
-                sx = 0; 
+                sx = 250; 
                 sy = 0;
                 break;
+            case ENTITY_TYPE_SHIP_2: 
+                sx = 500; 
+                sy = 0;
+                break;
+            case ENTITY_TYPE_SHIP_3: 
+                sx = 0; 
+                sy = 250;
+                break;
+            case ENTITY_TYPE_SHIP_4: 
+                sx = 250; 
+                sy = 250;
+                break;
+            case ENTITY_TYPE_ADMIRAL: 
+                sx = 500; 
+                sy = 250;
+                break;
+            case TERRAIN_TYPE_MOUNTAIN:
+                sx = 250;
+                sy = 500;
+                break;
+            case TERRAIN_TYPE_SWAMP:
+                sx = 0;
+                sy = 500;
+                break;                
+            
         };
         
         sWidth = 250;
@@ -1593,7 +1663,7 @@ function init_server() {
     let ship_weight = .2 + Math.random() / 2;
   //  ship_weight = 0; //DEV
     
-    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#0C0C0C', '#B9B165'];
+    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
     const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
                                 'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
                                 'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
