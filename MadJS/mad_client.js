@@ -29,6 +29,8 @@ const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rend
 
 let new_game_overlay_visible = false;
 
+let game_data;
+
 // var localStorage = window.localStorage; // TODO remove if this doesn't get implemented
 // window.localStorage.setItem('myKey', 'myValue');
 let myValue = localStorage.getItem('myKey');
@@ -40,6 +42,11 @@ console.log(myValue)
 
 const DEFAULT_TICK_SPEED = 500; // default ms to wait before rendering each new frame
 
+// class GameLocal {
+//     constructor(game_data) {
+        
+//     }
+// }
  
 
 ///////////
@@ -172,7 +179,7 @@ function populate_new_game_overlay(){
        
 }
 
-function launch_new_game(event) {
+function launch_new_game(event) { //TODO THIS MUST BE REFACTORED 
     console.log('launch new game!')
 
     let player_name = document.getElementById('input_name').value;
@@ -228,10 +235,12 @@ function launch_new_game(event) {
 
 
 //game init on server, event handlers on client side, canvas/context def on client
-function init_client(game_config_json){
+function init_client(game_data_json){
     console.log('Initializing a Madmirals instance')
     
-    // init_server();
+    game_data = JSON.parse(game_data_json);
+
+
     // Add event listener on keydown
     document.addEventListener('keydown', (event) => {
         if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
@@ -240,14 +249,14 @@ function init_client(game_config_json){
         }
     }, false);
 
-    move_mode = ACTION_MOVE_NORMAL
+
 
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
     canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
     context = canvas.getContext('2d');
 
-    canvas.height = CellClient.height*game.num_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game.num_cols // canvas width must match cols*col_size
+    canvas.height = CellClient.height*game_data.n_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.n_cols // canvas width must match cols*col_size
 
     canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
     canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
@@ -255,28 +264,24 @@ function init_client(game_config_json){
     drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
     
     sprite_sheet = new Image();
-    sprite_sheet.onload = function() {
-        //context.drawImage(sprite_sheet, 10, 10);
-        console.log('sprite drawn')
-       
-    };
-    //sprite_sheet.src = './img/sample_sprite_sheet.png';
     sprite_sheet.src = './img/sprites3.png';
 
     // create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
-    create_client_cells(game.num_rows, game.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    create_client_cells(game_data.n_rows, game_data.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
     
     populate_new_game_overlay();
+    
+    move_mode = ACTION_MOVE_NORMAL;
 
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
 function new_game_client() {
     //call this after a new game has been created at the server level
-    canvas.height = CellClient.height*game.num_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game.num_cols // canvas width must match cols*col_size
-    create_client_cells(game.num_rows, game.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    canvas.height = CellClient.height*game_data.num_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.num_cols // canvas width must match cols*col_size
+    create_client_cells(game_data.num_rows, game_data.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
   
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
@@ -291,7 +296,8 @@ class CellClient {
     static high_tide_color = '#0E306C'
     static low_tide_color = '#2A77E4' //'#1A57C4'
     static neutral_entity_color = '#BBBBBB'
-    static hidden_color = '#113366'
+    //static hidden_color = '#113366'
+    static hidden_color = '#333333'
             
     constructor(context, id, row, col) {
         this.context = context; // the context of the canvas we'll be drawing to
@@ -306,11 +312,7 @@ class CellClient {
     }   
 
     get_water_color() {
-        // game_tick_server
-        // context.fillStyle = "rgba(0, 0, 0, 0.2)";
-        //     cell.context.fillRect((cell.col-1)*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
-
-        if (game.game_tick_server % 200 > 100) {
+        if (game_tick_local % 200 > 100) {
             return CellClient.high_tide_color;
         }
         else {
@@ -320,7 +322,7 @@ class CellClient {
     }
 
     get_swamp_color() {
-        if (game.game_tick_server % 200 > 100) {
+        if (game_tick_local % 200 > 100) {
             return CellClient.high_tide_color;
         }
         else {
@@ -335,8 +337,7 @@ class CellClient {
         let water_color = this.get_water_color(); // different at low and hide tide
         let swamp_color = this.get_swamp_color(); // different at low and hide tide
         
-
-        this.context.strokeStyle = CellClient.water_color;
+        this.context.strokeStyle = CellClient.grid_color;
         this.context.lineWidth = 1;
         this.context.strokeRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
         
@@ -354,11 +355,11 @@ class CellClient {
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)    
             }
             
-            if (this.owner != null) { // Otherwise, if the spot is owned, draw a circle over it in the owner's color
+            if (this.owner != null) { //} && this.entity != ENTITY_TYPE_ADMIRAL) { //If the spot is owned, draw a circle over it in the owner's color
                 // this.draw_circle();
                 // this.draw_outline();
                 this.context.fillStyle = game.players[this.owner].color         
-                this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
+                this.context.fillRect(this.col*CellClient.width+1, this.row*CellClient.height+1, CellClient.width-2, CellClient.height-2)
                 
             } 
 
@@ -371,15 +372,15 @@ class CellClient {
             // // If there is an admiral here, draw a star to represent it
             // if (this.entity == ENTITY_TYPE_ADMIRAL ) { //&& false) {
             //     this.draw_star(5);
+            // }
             // } else if (this.entity != null) { 
             //     this.draw_sprite(this.entity);
             // };
+
             if (this.entity != null) { 
                 this.draw_sprite(this.entity);
             };
             
-
-
             this.draw_troops();
         }
     }
@@ -390,7 +391,7 @@ class CellClient {
    
         this.context.strokeStyle = color;    
         let x, y, line_width;
-        line_width = 5
+        line_width = 2
         x = this.col*CellClient.width; // + line_width/2;
         y = this.row*CellClient.height;
         this.context.beginPath();
@@ -589,7 +590,7 @@ function render_board() {
     // Draw arrows over each square containig one or more queued moves
     local_move_queue.forEach(move => {
         let id;
-        id = move.row * game.num_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
+        id = move.row * game_data.num_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
         cells_client[id].draw_arrow(move.dir, move.action);
     }); 
 
@@ -669,8 +670,8 @@ function wheel_handler(event) {
 
         // canvas.height = CellClient.height*num_rows // canvas width must match cols*col_size
     // canvas.width = CellClient.width*num_cols // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game.num_cols;
-    canvas.height = CellClient.height*game.num_rows;
+    canvas.width = CellClient.width*game_data.num_cols;
+    canvas.height = CellClient.height*game_data.num_rows;
 
     render_board();
 }
@@ -703,7 +704,6 @@ function handle_key_press(key_key) {
     //If they user has pressed a movement key, then try to move the active cell
     let dir, target_row, target_col;
     
-    
     if ((key_key == 'W' || key_key == 'w' || key_key == 'ArrowUp') && active_cell[0] > 0) {
         target_row = active_cell[0] - 1
         target_col = active_cell[1]
@@ -712,11 +712,11 @@ function handle_key_press(key_key) {
         target_row = active_cell[0]
         target_col = active_cell[1] - 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'left')
-    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game.num_rows - 1) { // down
+    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game_data.n_rows - 1) { // down
         target_row = active_cell[0] + 1
         target_col = active_cell[1]
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'down')
-    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game.num_cols - 1) { // right
+    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game_data.n_cols - 1) { // right
         target_row = active_cell[0]
         target_col = active_cell[1] + 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'right')

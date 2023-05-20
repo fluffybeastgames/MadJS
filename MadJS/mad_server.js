@@ -721,10 +721,14 @@ class Bot {
 }
 
 
-function init_server(n_rows, n_cols, fog_of_war) {
+function init_server(game_data_json) {
+    let game_data = JSON.parse(game_data_json)
     //alert(n_rows)
     // let fog_of_war = Math.random() > .5;
     // // fog_of_war = false; // DEV
+    let n_rows = game_data.n_rows;
+    let n_cols = game_data.n_cols;
+    let fog_of_war = game_data.fog_of_war;
     
     // let n_rows = 15 + Math.floor(Math.random()*15);
     // let n_cols = 15 + Math.floor(Math.random()*30);

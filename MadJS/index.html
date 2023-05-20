@@ -90,20 +90,22 @@
         
         <script>
 
-            let game_starting_data =  {
+            let starting_game_settings =  {
+                n_rows: 15,
+                n_cols: 25,
+                n_bots: 3,
+                fog_of_war: false
+            };
+            let game_data_json =  JSON.stringify(starting_game_settings);
 
-            }
-            let n_rows = 10;
-            let n_cols = 30;
-            let fog_of_war = false;
-            window.onload = init_server(n_rows, n_cols, fog_of_war); // later this will be performed in a separate node app
-            window.onload = init_client; // later this should be a socket callback on connection to the server
+            window.onload = init_server(game_data_json); // later this will be performed in a separate node app
+            window.onload = init_client(game_data_json); // later this should be a socket callback on connection to the server
 
         </script>
 
     <footer class="w3-container w3-theme-dark w3-padding-8" style="position:fixed;bottom:0;width:100%">
         <h4>Fluffy Beast Games</h4>
-        <p>©2023 <a href="mailto:contact@fluffybeast.io">Email</a>  - <a href="https://github.com/fluffybeastgames/MadJS">Source Code</a> v0.0.5</p>
+        <p>©2023 <a href="mailto:contact@fluffybeast.io">Email</a>  - <a href="https://github.com/fluffybeastgames/MadJS">Source Code</a> v0.0.6</p>
       </footer>    
 </body>
 </html>
