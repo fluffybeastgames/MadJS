@@ -720,57 +720,10 @@ class Bot {
     };
 }
 
-
+//if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
 function init_server(game_data_json) {
-    let game_data = JSON.parse(game_data_json)
-    //alert(n_rows)
-    // let fog_of_war = Math.random() > .5;
-    // // fog_of_war = false; // DEV
-    let n_rows = game_data.n_rows;
-    let n_cols = game_data.n_cols;
-    let fog_of_war = game_data.fog_of_war;
-    
-    // let n_rows = 15 + Math.floor(Math.random()*15);
-    // let n_cols = 15 + Math.floor(Math.random()*30);
-    let n_bots = Math.floor(Math.random()*11) + 1; // how many bots do we spawn? Currently need at least 1
-   // n_bots = 1; // DEV
+    request_new_game(game_data_json) // server side initiation process for a new game
 
-    let water_weight = 10 + Math.random();
-    let mountain_weight = 1 + Math.random();
-    let swamp_weight  = .1 + Math.random() / 4 ; 
-    let ship_weight = .2 + Math.random() / 2;
-  //  ship_weight = 0; //DEV
-    
-    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
-    const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
-                                'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
-                                'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
-                                'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
-                                'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
-                                'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
-
-    
-    game = new Game(n_rows, n_cols, fog_of_war);
-    game.add_human('12345678', 'Player One', '#0a5a07');
-
-    for (let i = 0; i < n_bots; i++) {
-        let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
-        let bot_color = bot_color_options[bot_color_index];
-        bot_color_options.splice(bot_color_index, 1);
-
-        let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
-        let bot_name = bot_name_options[bot_name_index];
-        bot_name_options.splice(bot_name_index, 1);
-
-        game.add_bot('bot personality', bot_name, bot_color);
-
-    };
-
-    game.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
-    game.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
-    
-    game.status = GAME_STATUS_IN_PROGRESS
-    game.game_on = true; // start with the simulation running instead of paused
     game.send_game_state_to_players();
     game_loop_server()
 }
@@ -811,6 +764,53 @@ function should_be_visible(cell, player_id, fog_of_war_distance) {
         return (get_owned_neighbors(cell, player_id, fog_of_war_distance) > 0);
     }
 }
+
+function request_new_game(game_data_json) {
+
+    let game_data = JSON.parse(game_data_json)
+    // For each possible game setting, use the json input value, if present, and default to random/default values
+    let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
+    let n_cols = 'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);;;
+    let fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .5;
+    let n_bots = 'n_bots' in game_data ? game_data.n_bots : Math.floor(Math.random()*11) + 1;;
+
+    let water_weight = 'water_weight' in game_data ? game_data.water_weight : 10 + Math.random();
+    let mountain_weight = 'mountain_weight' in game_data ? game_data.mountain_weight : 1 + Math.random();
+    let swamp_weight  = 'swamp_weight' in game_data ? game_data.swamp_weight : .1 + Math.random() / 4 ; 
+    let ship_weight = 'ship_weight' in game_data ? game_data.ship_weight : .2 + Math.random() / 2;
+    
+    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
+    const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
+                                'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
+                                'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
+                                'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
+                                'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
+                                'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
+
+    
+    game = new Game(n_rows, n_cols, fog_of_war);
+    game.add_human('12345678', 'Player One', '#0a5a07');
+
+    for (let i = 0; i < n_bots; i++) {
+        let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
+        let bot_color = bot_color_options[bot_color_index];
+        bot_color_options.splice(bot_color_index, 1);
+
+        let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
+        let bot_name = bot_name_options[bot_name_index];
+        bot_name_options.splice(bot_name_index, 1);
+
+        game.add_bot('bot personality', bot_name, bot_color);
+
+    };
+
+    game.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+    game.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+    
+    game.status = GAME_STATUS_IN_PROGRESS
+    game.game_on = true; // start with the simulation running instead of paused
+}
+
 
 function get_owned_neighbors(cell, player_id, fog_of_war_distance) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
     let num_neighbors = 0;
@@ -885,8 +885,13 @@ function check_for_game_over() {
 }
 
 
-function toggle_pause_server() {
+function toggle_pause_server(toggle, override) {
+    if (toggle) {
+        game.game_on = ! game.game_on
+    }
+    else {
+        game.game_on = override
+    }
     console.log('Toggling pause')
-    game.game_on = !game.game_on //game_loop will keep running when game.game_on is false but will not update the board or render it
-    return game.game_on
+    
 }

@@ -54,9 +54,7 @@ const DEFAULT_TICK_SPEED = 500; // default ms to wait before rendering each new 
 ///////////
 
 function show_new_game_overlay() {
-    if(game.game_on) {
-        toggle_pause()
-    }
+    toggle_pause_server(false, false) // hard set to paused
     
     document.getElementById('mad-overlay').style.display = 'block';
     new_game_overlay_visible = true;
@@ -65,7 +63,7 @@ function hide_new_game_overlay() {
     document.getElementById('mad-overlay').style.display = 'none';
     new_game_overlay_visible = false;
     
-    toggle_pause() // TODO currently this will always unpause the game, even if the game was paused when the overlay was opened. Evaluate desire behavior
+    toggle_pause_server(false, true) // hard set to unpaused
 }
 
 function game_loop_client() {
@@ -181,55 +179,24 @@ function populate_new_game_overlay(){
 
 function launch_new_game(event) { //TODO THIS MUST BE REFACTORED 
     console.log('launch new game!')
-
-    let player_name = document.getElementById('input_name').value;
-    let n_rows = document.getElementById('rows_range').value;
-    let n_cols = document.getElementById('cols_range').value;
     
-    let num_bots = document.getElementById('bots_range').value;
-
-    let water_weight = 100;
-    let mountain_weight = Number(document.getElementById('mountains_range').value);
-    let ship_weight  = Number(document.getElementById('ships_range').value);
-    let swamp_weight = Number(document.getElementById('swamps_range').value);
-
-    let fog_of_war = document.getElementById('radio_fog_on').checked
- 
-    game = new Game(n_rows, n_cols, fog_of_war);
-    game.add_human('12345678', player_name, '#0a5a07'); // todo add color selection
-    
-    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#0C0C0C', '#B9B165'];
-    const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
-                                'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
-                                'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
-                                'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
-                                'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
-                                'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
-    
-    for (let i = 0; i < num_bots; i++) {
-        let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
-        let bot_color = bot_color_options[bot_color_index];
-        bot_color_options.splice(bot_color_index, 1);
-
-        let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
-        let bot_name = bot_name_options[bot_name_index];
-        bot_name_options.splice(bot_name_index, 1);
-
-        game.add_bot('bot personality', bot_name, bot_color);
-
+    game_data = {
+        n_rows: document.getElementById('rows_range').value,
+        n_cols: document.getElementById('cols_range').value,
+        n_bots: document.getElementById('bots_range').value,
+        fog_of_war: document.getElementById('radio_fog_on').checked,
+        player_name: document.getElementById('input_name').value,
+        water_weight:100, // MAGIC NUMBER
+        mountain_weight:Number(document.getElementById('mountains_range').value),
+        ship_weight:Number(document.getElementById('ships_range').value),
+        swamp_weight:Number(document.getElementById('swamps_range').value)
     };
+    console.log(JSON.stringify(game_data))
+    request_new_game(JSON.stringify(game_data));//
+    // init_server(JSON.stringify(game_data))
 
-    // console.log(`got here. num players = ${game.players.length}`)
+    new_game_client(game_data);
 
-    game.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
-    game.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
-    
-    game.status = GAME_STATUS_IN_PROGRESS
-    //game.game_on = true; // start with the simulation running instead of paused
-    
-    new_game_client();
-    game.send_game_state_to_players();
-    
     hide_new_game_overlay()
 }
 
@@ -279,9 +246,9 @@ function init_client(game_data_json){
 
 function new_game_client() {
     //call this after a new game has been created at the server level
-    canvas.height = CellClient.height*game_data.num_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.num_cols // canvas width must match cols*col_size
-    create_client_cells(game_data.num_rows, game_data.num_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    canvas.height = CellClient.height*game_data.n_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.n_cols // canvas width must match cols*col_size
+    create_client_cells(game_data.n_rows, game_data.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
   
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
@@ -562,11 +529,10 @@ class CellClient {
 };
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
-    // console.log('creating client cell grid')
+    console.log('creating client cell grid', n_rows, n_cols)
     cells_client = []; // reset the array of cells, in case this isn't first game of session
 
-    let id;
-    id = 0
+    let id = 0;
     for(let r = 0; r < n_rows; r++) {
         for(let c = 0; c < n_cols; c++) {
             cells_client.push(new CellClient(context, id, r, c));
@@ -590,7 +556,7 @@ function render_board() {
     // Draw arrows over each square containig one or more queued moves
     local_move_queue.forEach(move => {
         let id;
-        id = move.row * game_data.num_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
+        id = move.row * game_data.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
         cells_client[id].draw_arrow(move.dir, move.action);
     }); 
 
@@ -670,8 +636,8 @@ function wheel_handler(event) {
 
         // canvas.height = CellClient.height*num_rows // canvas width must match cols*col_size
     // canvas.width = CellClient.width*num_cols // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.num_cols;
-    canvas.height = CellClient.height*game_data.num_rows;
+    canvas.width = CellClient.width*game_data.n_cols;
+    canvas.height = CellClient.height*game_data.n_rows;
 
     render_board();
 }
@@ -855,7 +821,7 @@ function drag_canvas_event_handler(canvas_element) {
 function toggle_pause() { //single player mode only. 
 // In order to keep the faux separation of server and client, this function cannot access game_on directly. 
 // This function would become an event handler when node mode activated
-    let new_pause_status = toggle_pause_server() 
+    let new_pause_status = toggle_pause_server(true); // true as in toggle and don't look for a second parameter setting it to a specific value
     
     // Update the button text to indicate the action it would perform
     document.getElementById('pause_resume_button').innerText = new_pause_status ? 'Pause' : 'Play';
