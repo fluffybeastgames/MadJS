@@ -257,10 +257,15 @@ function new_game_client() {
 
 function get_player_color(owner){
     if('scoreboard' in game_state_data) { 
-        return game_state_data['scoreboard'][owner]['color'];
-    } else {
-        return neutral_entity_color; // if not found
-    }
+        for (let i = 0; i < game_state_data['scoreboard'].length; i++) { 
+            if (game_state_data['scoreboard'][i]['id'] == owner) {
+                return game_state_data['scoreboard'][i]['color'];
+            };
+        };   
+    };
+
+    return neutral_entity_color; // if not found
+    
 }
 
 class CellClient {
