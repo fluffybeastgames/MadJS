@@ -1,43 +1,64 @@
 "use strict";
 
-///////////
-// Server constants and global variables
-///////////
+const path_finder = require("./path_finder");
+// const mad_common = require("./mad_common");
+// const c = require("./mad_constants");
 
 let game = null;
 
+
+
+
 ///////////
-// Server classes and functions
+// Shared constants
 ///////////
 
-// function get_game_starting_data_json() {
-//     obj = { row_count: 10,
-//             col_count: 15,
-//             board: [] }           
-        
-//     // let game_string = '{ "game": {' +
-//     // `"state" : "${this.game_on}",` +
-//     // `"turn": "${this.game_tick_server}",` +
-//     // `"row_count": "${this.num_rows}",` +
-//     // `"col_count": "${this.num_cols}",` +
-//     // `"next_queue_id": "${next_queue_id}"` +
-//     // '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
+const TERRAIN_TYPE_WATER = 101;
+const TERRAIN_TYPE_SWAMP = 104 ;
+const TERRAIN_TYPE_MOUNTAIN = 105;
+const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106;
+const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107;
+
+const ENTITY_TYPE_ADMIRAL = 200;
+const ENTITY_TYPE_SHIP = 201;
+const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
+// const ENTITY_TYPE_INFANTRY = 205;
+
+const ACTION_MOVE_NORMAL = 1;
+const ACTION_MOVE_HALF = 2;
+const ACTION_MOVE_ALL = 3;
+const ACTION_MOVE_CITY = 4;
+const ACTION_MOVE_NONE = 5;
 
 
-//     return JSON.stringify(obj);
+const GAME_MODE_FFA = 1;
+const GAME_MODE_FFA_CUST = 2;
+const GAME_MODE_REPLAY = 3;
 
+const GAME_STATUS_INIT = 0; // loading;
+const GAME_STATUS_READY = 1; // able to start;
+const GAME_STATUS_IN_PROGRESS = 2; //;
+const GAME_STATUS_PAUSE = 3; //;
+const GAME_STATUS_GAME_OVER_WIN = 4; // game instance is complete and can no longer be played;
+const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no longer be played;
+
+const MIN_DISTANCE_ADMIRALS = 5;
+
+const DEFAULT_TICK_SPEED = 500;
+
+
+
+// function game_loop_server() {
+//     // console.log('tick')
+//     if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
+//         check_for_game_over();
+//         game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+//         game.send_game_state_to_players();
+//     }
+//     setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
 // }
-
-
-function game_loop_server() {
-    // console.log('tick')
-    if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
-        check_for_game_over();
-        game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-        game.send_game_state_to_players();
-    }
-    setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
-}
 
 class Game {
     // game = new Game(n_rows, n_cols, fog_of_war, 1, human_player_info, num_bots, starting_troops, water_weight, mountain_weight, swamp_weight, ship_weight);
@@ -52,8 +73,8 @@ class Game {
         this.num_cols =  n_cols
         this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
         this.initialize_cells();
-        this.astar_board = new ABoard(this.num_rows, this.num_cols, 0);
-        this.astar = new AStar(this.astar_board);
+        this.astar_board = new path_finder.ABoard(this.num_rows, this.num_cols, 0);
+        this.astar = new path_finder.AStar(this.astar_board);
         this.game_tick_server = -1;
         this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
 
@@ -76,7 +97,7 @@ class Game {
         let id = 0;
         for(let r = 0; r < this.num_rows; r++) {
             for(let c = 0; c < this.num_cols; c++) {
-                this.cells.push(new CellServer(context, id, r, c));
+                this.cells.push(new CellServer(id, r, c));
                 id++;;
             }
         }
@@ -406,9 +427,11 @@ class Game {
         game_string += '] }'; // close the scoreboard and whole json object
         
 
-        // console.log(game_string);    
+        console.log(game_string);    
         // console.log(game_json.this.row_count);
-        client_receives_game_state_here(game_string)
+
+        //TODO restore/update : client_receives_game_state_here(game_string)
+        console.log('client would receive above string normally')
         
     }
 
@@ -416,7 +439,7 @@ class Game {
 
 
 class CellServer {
-    constructor(context, id, row, col) {
+    constructor(id, row, col) {
         this.id = id //position w/in the 1d array of cells
         this.row = row;
         this.col = col;
@@ -723,7 +746,7 @@ function init_server(game_data_json) {
     request_new_game(game_data_json) // server side initiation process for a new game
 
     game.send_game_state_to_players();
-    game_loop_server()
+    // game_loop_server()
 }
 
 
@@ -874,13 +897,13 @@ function check_for_game_over() {
     if (remaining_humans_count == 0) {
         game.game_on = false;
         console.log('Game over! Humans lose.'); // TODO pass this info on to the client
-        alert('Game over! Humans lose.'); // TODO pass this info on to the client //placeholder for now
+        //alert('Game over! Humans lose.'); // TODO pass this info on to the client //placeholder for now
         
     
     } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
         game.game_on = false;
         console.log(`Game over! Player (TBD) wins!!!`); // TODO pass this info on to the client
-        alert(`You win! Congrats!`); // TODO pass this info on to the client //placeholder for now
+        //alert(`You win! Congrats!`); // TODO pass this info on to the client //placeholder for now
     };
 }
 
@@ -895,3 +918,91 @@ function toggle_pause_server(toggle, override) {
     console.log('Toggling pause')
     
 }
+
+function weighted_choice(arr_options) {
+//Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
+    let total_weight = 0; 
+    arr_options.forEach(option => { total_weight += Math.max(option.weight,0) }); // sum up the individual weights to determine the scale of our randrange
+
+    let rand_weight = Math.random()*total_weight;
+
+    let traversed_weight = 0, arr_pos = -1;
+    while(traversed_weight < rand_weight && arr_pos < arr_options.length - 1) {
+        arr_pos++;
+        traversed_weight += arr_options[arr_pos].weight
+    }
+    return arr_options[arr_pos]
+
+}
+    
+function test_weighted_choice() {
+    let num_tests = 10000;
+    let weighted_choice_data = [
+        {'value1':'value_0', 'other_val_1':'test', 'weight':0}, // 0 should never be selected
+        {'value1':'value_1', 'other_val_1':'test', 'weight':1},
+        {'value1':'value_2', 'other_val_1':'test', 'weight':2},
+        {'value1':'value_3', 'other_val_1':'test', 'weight':3},
+        {'value1':'value_4', 'other_val_1':'test', 'weight':4},
+        {'value1':'value_5', 'other_val_1':'test', 'weight':5},
+        {'value1':'value_6', 'other_val_1':'test', 'weight':6},
+        {'value1':'value_7', 'other_val_1':'test', 'weight':7},
+        {'value1':'value_8', 'other_val_1':'test', 'weight':8},
+        {'value1':'value_9', 'other_val_1':'test', 'weight':9}, // a weight of 9 should be selected ~9x as often as a weight of 1
+        {'value1':'value_10', 'other_val_1':'test', 'weight':-10}, // should default to 0
+    ];
+
+    let arr_results = new Array(11).fill(0);
+
+    for (let i = 0; i < num_tests; i++) {
+        let result = weighted_choice(weighted_choice_data)
+        arr_results[result.weight] ++
+    };
+    console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
+}
+        
+
+
+
+
+const express = require('express');
+const app = express();
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server);
+
+var visitor_ct = 0;
+
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
+server.listen(3000, () => {
+    console.log('Listening on *:3000');
+
+    let start_time = Date.now()
+
+    let starting_game_settings =  {
+        n_rows: 15,
+        n_cols: 25,
+        n_bots: 2,
+        fog_of_war: false
+    };
+    let game_data_string = JSON.stringify(starting_game_settings);
+ //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
+    init_server(game_data_string)
+    
+    setInterval(function(){
+        console.log('tick')
+
+        if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
+            check_for_game_over();
+            game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+            game.send_game_state_to_players();
+        }
+
+        io.emit('news_by_server', 'testing');
+    }, 1000);
+});
+
+

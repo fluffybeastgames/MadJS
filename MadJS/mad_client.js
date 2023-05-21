@@ -1,5 +1,47 @@
 "use strict";
 
+// const mad_common = require("./mad_common");
+
+///////////
+// Shared constants
+///////////
+
+const TERRAIN_TYPE_WATER = 101;
+const TERRAIN_TYPE_SWAMP = 104 ;
+const TERRAIN_TYPE_MOUNTAIN = 105;
+const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106;
+const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107;
+
+const ENTITY_TYPE_ADMIRAL = 200;
+const ENTITY_TYPE_SHIP = 201;
+const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
+// const ENTITY_TYPE_INFANTRY = 205;
+
+const ACTION_MOVE_NORMAL = 1;
+const ACTION_MOVE_HALF = 2;
+const ACTION_MOVE_ALL = 3;
+const ACTION_MOVE_CITY = 4;
+const ACTION_MOVE_NONE = 5;
+
+
+const GAME_MODE_FFA = 1;
+const GAME_MODE_FFA_CUST = 2;
+const GAME_MODE_REPLAY = 3;
+
+const GAME_STATUS_INIT = 0; // loading;
+const GAME_STATUS_READY = 1; // able to start;
+const GAME_STATUS_IN_PROGRESS = 2; //;
+const GAME_STATUS_PAUSE = 3; //;
+const GAME_STATUS_GAME_OVER_WIN = 4; // game instance is complete and can no longer be played;
+const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no longer be played;
+
+const MIN_DISTANCE_ADMIRALS = 5;
+
+
+
+
 ///////////
 // Local App constants and global variables
 ///////////
@@ -37,18 +79,6 @@ let game_state_data; // info that persists for one turn
 let myValue = localStorage.getItem('myKey');
 console.log(myValue)
 
-///////////
-// Server constants and global variables
-///////////
-
-const DEFAULT_TICK_SPEED = 500; // default ms to wait before rendering each new frame
-
-// class GameLocal {
-//     constructor(game_data) {
-        
-//     }
-// }
- 
 
 ///////////
 // Local App classes and functions
@@ -730,48 +760,6 @@ function undo_queued_move() { //undo last queued move and return active cell to 
         render_board();
     }
 }
-
-function weighted_choice(arr_options) {
-//Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
-    let total_weight = 0; 
-    arr_options.forEach(option => { total_weight += Math.max(option.weight,0) }); // sum up the individual weights to determine the scale of our randrange
-
-    let rand_weight = Math.random()*total_weight;
-
-    let traversed_weight = 0, arr_pos = -1;
-    while(traversed_weight < rand_weight && arr_pos < arr_options.length - 1) {
-        arr_pos++;
-        traversed_weight += arr_options[arr_pos].weight
-    }
-    return arr_options[arr_pos]
-
-}
-
-function test_weighted_choice() {
-    let num_tests = 10000;
-    let weighted_choice_data = [
-        {'value1':'value_0', 'other_val_1':'test', 'weight':0}, // 0 should never be selected
-        {'value1':'value_1', 'other_val_1':'test', 'weight':1},
-        {'value1':'value_2', 'other_val_1':'test', 'weight':2},
-        {'value1':'value_3', 'other_val_1':'test', 'weight':3},
-        {'value1':'value_4', 'other_val_1':'test', 'weight':4},
-        {'value1':'value_5', 'other_val_1':'test', 'weight':5},
-        {'value1':'value_6', 'other_val_1':'test', 'weight':6},
-        {'value1':'value_7', 'other_val_1':'test', 'weight':7},
-        {'value1':'value_8', 'other_val_1':'test', 'weight':8},
-        {'value1':'value_9', 'other_val_1':'test', 'weight':9}, // a weight of 9 should be selected ~9x as often as a weight of 1
-        {'value1':'value_10', 'other_val_1':'test', 'weight':-10}, // should default to 0
-    ];
-
-    let arr_results = new Array(11).fill(0);
-
-    for (let i = 0; i < num_tests; i++) {
-        let result = weighted_choice(weighted_choice_data)
-        arr_results[result.weight] ++
-    };
-    console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
-}
-      
 
 function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     local_queued_move_counter ++;

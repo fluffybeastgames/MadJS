@@ -97,7 +97,7 @@
                 fog_of_war: false
             };
             let game_data_string = JSON.stringify(starting_game_settings);
-            window.onload = init_server(game_data_string); // later this will be performed in a separate node app
+         //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
             window.onload = init_client(game_data_string); // later this should be a socket callback on connection to the server
 
         </script>
