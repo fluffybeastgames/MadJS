@@ -23,19 +23,20 @@ Clone this repo and try opening index.html!
 ## How to Play
 
 You control the green fleet. The goal is to eliminate the other fleets' admirals.
+	Upwards Arrow	24
 
 Controls
-* Left click - Select a cell
-* Right click - Select a cell and switch to 'Move All' mode
-* Right click - Select a cell and set it to 'Split in half' mode
-* W - Up
-* A - Left
-* S - Down
-* D - Right
+* Left Click - Select a cell
+* Middle Click (or double left click) - Select a cell and switch to 'Move All' mode
+* Right Click (or triple left click) - Select a cell and set it to 'Split in half' mode
+* W or ↑ Key - Up
+* A or ← Key - Left
+* S or ↓ Key - Down
+* D or → Key - Right
 * E - Undo the last queued move
 * Q - Remove entire queue
 * Scroll Wheel - Zoom
-* Drag and drop - move canvas
+* Drag and Drop - move canvas
 
 There are three options when it comes to moving around the board:
  * Left click on a green cell to select it, then use the WASD keys to move, leaving a trail of cells behind. These cells will grow in size over time, to your benefit.
