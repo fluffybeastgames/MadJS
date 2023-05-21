@@ -83,14 +83,28 @@
         </div>
             
         <script src="path_finder.js"></script>
-        <script src="mad.js"></script>
+        <!-- <script src="mad.js"></script> -->
+        <script src="mad_constants.js"></script>
+        <script src="mad_client.js"></script>
+        <script src="mad_server.js"></script>
+        
         <script>
-            window.onload = init_client;
+
+            let starting_game_settings =  {
+                n_rows: 15,
+                n_cols: 25,
+                n_bots: 2,
+                fog_of_war: false
+            };
+            let game_data_string = JSON.stringify(starting_game_settings);
+            window.onload = init_server(game_data_string); // later this will be performed in a separate node app
+            window.onload = init_client(game_data_string); // later this should be a socket callback on connection to the server
+
         </script>
 
     <footer class="w3-container w3-theme-dark w3-padding-8" style="position:fixed;bottom:0;width:100%">
         <h4>Fluffy Beast Games</h4>
-        <p>©2023 <a href="mailto:contact@fluffybeast.io">Email</a>  - <a href="https://github.com/fluffybeastgames/MadJS">Source Code</a> v0.0.5</p>
+        <p>©2023 <a href="mailto:contact@fluffybeast.io">Email</a>  - <a href="https://github.com/fluffybeastgames/MadJS">Source Code</a> v0.0.6</p>
       </footer>    
 </body>
 </html>
