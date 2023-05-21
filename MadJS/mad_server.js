@@ -789,7 +789,9 @@ function request_new_game(game_data_json) {
 
     
     game = new Game(n_rows, n_cols, fog_of_war);
-    game.add_human('12345678', 'Player One', '#0a5a07');
+    
+    let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
+    game.add_human('12345678', player_name, '#0a5a07');
 
     for (let i = 0; i < n_bots; i++) {
         let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
