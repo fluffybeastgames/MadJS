@@ -399,18 +399,16 @@ class Game {
         game_string += '], "scoreboard":[  '; // close the board loop and start adding the scoreboard
         
         for (let i = 0; i < this.players.length; i++) {
-            game_string += `{"display_name": "${this.players[i].display_name}", "troops": ${this.players[i].troop_count()}, "ships": ${this.players[i].ship_count()}, "admirals": ${this.players[i].admiral_count()}, "color": "${this.players[i].color}" }, `   
+            game_string += `{"id":"${i}", "display_name": "${this.players[i].display_name}", "troops": ${this.players[i].troop_count()}, "ships": ${this.players[i].ship_count()}, "admirals": ${this.players[i].admiral_count()}, "color": "${this.players[i].color}" }, `   
         };
 
         game_string = game_string.slice(0,-2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
         game_string += '] }'; // close the scoreboard and whole json object
         
 
-        let json_obj = JSON.parse(game_string);
-        
         // console.log(game_string);    
         // console.log(game_json.this.row_count);
-        client_receives_game_state_here(json_obj)
+        client_receives_game_state_here(game_string)
         
     }
 

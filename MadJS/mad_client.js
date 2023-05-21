@@ -29,7 +29,8 @@ const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rend
 
 let new_game_overlay_visible = false;
 
-let game_data;
+let game_data; // info that persists for one game
+let game_state_data; // info that persists for one turn
 
 // var localStorage = window.localStorage; // TODO remove if this doesn't get implemented
 // window.localStorage.setItem('myKey', 'myValue');
@@ -253,6 +254,15 @@ function new_game_client() {
   
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
+
+function get_player_color(owner){
+    if('scoreboard' in game_state_data) { 
+        return game_state_data['scoreboard'][owner]['color'];
+    } else {
+        return neutral_entity_color; // if not found
+    }
+}
+
 class CellClient {
     static width = DEFAULT_CANVAS_WIDTH;
     static height = DEFAULT_CANVAS_HEIGHT;
@@ -325,7 +335,7 @@ class CellClient {
             if (this.owner != null) { //} && this.entity != ENTITY_TYPE_ADMIRAL) { //If the spot is owned, draw a circle over it in the owner's color
                 // this.draw_circle();
                 // this.draw_outline();
-                this.context.fillStyle = game.players[this.owner].color         
+                this.context.fillStyle = get_player_color(this.owner)         
                 this.context.fillRect(this.col*CellClient.width+1, this.row*CellClient.height+1, CellClient.width-2, CellClient.height-2)
                 
             } 
@@ -389,7 +399,7 @@ class CellClient {
 
         this.context.beginPath();
         this.context.arc(x, y, radius, 0, 2 * Math.PI, false);
-        this.context.fillStyle = game.players[this.owner].color;
+        this.context.fillStyle = get_player_color(this.owner);
         this.context.fill(); // apply the solid color
     
     }
@@ -447,7 +457,7 @@ class CellClient {
         let x = this.col*CellClient.width + CellClient.width/2;
         let y = this.row*CellClient.height + CellClient.height/2;
         let radius = CellClient.width/2;
-        let fillColor = (this.owner !=null) ? game.players[this.owner].color: CellClient.neutral_entity_color;
+        let fillColor = (this.owner !=null) ? get_player_color(this.owner): CellClient.neutral_entity_color;
 
         this.context.save();
         this.context.fillStyle = fillColor;
@@ -827,11 +837,13 @@ function toggle_pause() { //single player mode only.
     document.getElementById('pause_resume_button').innerText = new_pause_status ? 'Pause' : 'Play';
 }
 
-function client_receives_game_state_here(json) {
+function client_receives_game_state_here(game_state_string) {
+    game_state_data = JSON.parse(game_state_string);
+    
     if (cells_client.length > 0) {    
         //console.log('Attempting a new way of rendering')
         
-        game_tick_local = json.game.turn // update the turn count
+        game_tick_local = game_state_data.game.turn // update the turn count
         
         // Update the board to contain only info the player should currently be able to see
         cells_client.forEach(cell => {
@@ -842,7 +854,7 @@ function client_receives_game_state_here(json) {
             cell.visible = false;
         });
                 
-        json.board.forEach(new_cell => {
+        game_state_data.board.forEach(new_cell => {
             if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
             if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
             if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
@@ -850,7 +862,7 @@ function client_receives_game_state_here(json) {
             if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
         });
 
-        let scoreboard_data = json.scoreboard;
+        let scoreboard_data = game_state_data.scoreboard;
         scoreboard_data.sort((a, b) => (a.troops > b.troops) ? -1 : 1); //sort by troops, descending
         
         const table_body = scoreboard_data.map(value => {
@@ -870,7 +882,7 @@ function client_receives_game_state_here(json) {
 
     
     // Update the local move queue - if one or more moves has been removed by the server, remove them from the front of the local queue
-    let new_min_queue_id = json.game.next_queue_id
+    let new_min_queue_id = game_state_data.game.next_queue_id
 
     if (new_min_queue_id == '-1') {
         //console.log('got here')
