@@ -372,12 +372,12 @@ class Game {
     send_game_state_to_players() {
         this.players.forEach(player => {
             if (player.is_human) {
-                this.send_game_state_to(player.uid, 'client_receives_game_state');
+                this.send_game_state_to(player.uid);
             }
         } );
     }
 
-    send_game_state_to(player_id, emit_code) {
+    send_game_state_to(player_id) {
         // let player_id = 0;
         
         let next_queue_id = this.players[player_id].queued_moves.length > 0 ? this.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
@@ -386,8 +386,8 @@ class Game {
         let game_string = '{ "game": {' +
             `"state" : "${this.game_on}",` +
             `"turn": "${this.game_tick_server}",` +
-            `"row_count": "${this.num_rows}",` +
-            `"col_count": "${this.num_cols}",` +
+            `"n_rows": "${this.num_rows}",` +
+            `"n_cols": "${this.num_cols}",` +
             `"next_queue_id": "${next_queue_id}"` +
             '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
 
@@ -426,13 +426,9 @@ class Game {
         game_string = game_string.slice(0,-2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
         game_string += '] }'; // close the scoreboard and whole json object
         
-
-        // console.log(game_string);    
-        // console.log(game_json.this.row_count);
-
-        //TODO restore/update : client_receives_game_state_here(game_string)
-        console.log('SENDING client_receives_game_state', emit_code)
-        io.emit(emit_code, game_string);
+        // send the game data the specified player
+        // TODO this is currently emiting to everyone, need it to go to just the desired player
+        io.emit('client_receives_game_state', game_string); 
         
     }
 
@@ -979,6 +975,8 @@ app.use(express.static('./'))
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
+
+// app.use('/assets',express.static(__dirname +'/assets')); // enable node to access the assets folder
 
 io.on('connection', (socket) => {
     console.log('user connected');

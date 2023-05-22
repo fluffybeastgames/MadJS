@@ -82,7 +82,7 @@ console.log('testing!!!')
 ///////////
 
 function show_new_game_overlay() {
-    toggle_pause_server(false, false) // hard set to paused
+    // toggle_pause_server(false, false) // hard set to paused
     
     document.getElementById('mad-overlay').style.display = 'block';
     new_game_overlay_visible = true;
@@ -91,7 +91,7 @@ function hide_new_game_overlay() {
     document.getElementById('mad-overlay').style.display = 'none';
     new_game_overlay_visible = false;
     
-    toggle_pause_server(false, true) // hard set to unpaused
+    // toggle_pause_server(false, true) // hard set to unpaused
 }
 
 function game_loop_client() {
@@ -234,6 +234,7 @@ function init_client(game_data_string){
     console.log('Initializing a Madmirals instance')
     
     game_data = JSON.parse(game_data_string);
+    console.log(game_data)
 
 
     // Add event listener on keydown
@@ -244,14 +245,9 @@ function init_client(game_data_string){
         }
     }, false);
 
-
-
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
     canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
     context = canvas.getContext('2d');
-
-    canvas.height = CellClient.height*game_data.n_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.n_cols // canvas width must match cols*col_size
 
     canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
     canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
@@ -262,7 +258,11 @@ function init_client(game_data_string){
     sprite_sheet.src = './img/sprites3.png';
 
     // create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
-    create_client_cells(game_data.n_rows, game_data.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    console.log('testt  ', game_data.n_rows)
+    canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
+
     render_board(); // display the starting conditions for the sim
     
     populate_new_game_overlay();
@@ -274,12 +274,12 @@ function init_client(game_data_string){
 
 function new_game_client() {
     //call this after a new game has been created at the server level
-    canvas.height = CellClient.height*game_data.n_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.n_cols // canvas width must match cols*col_size
-    create_client_cells(game_data.n_rows, game_data.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
+    create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
   
-    window.requestAnimationFrame(() => game_loop_client()); // start the game loop
+    //window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
 function get_player_color(owner){
@@ -584,6 +584,7 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
 }
 
 function render_board() {    
+    console.log('render_board()')
     context.fillStyle=CellClient.hidden_color  
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
@@ -834,7 +835,7 @@ function client_receives_game_state_here(game_state_string) {
         //console.log('Attempting a new way of rendering')
         
         game_tick_local = game_state_data.game.turn // update the turn count
-        
+        console.log(game_tick_local)
         // Update the board to contain only info the player should currently be able to see
         cells_client.forEach(cell => {
             cell.owner = null;
