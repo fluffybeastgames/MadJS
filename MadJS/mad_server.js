@@ -372,12 +372,12 @@ class Game {
     send_game_state_to_players() {
         this.players.forEach(player => {
             if (player.is_human) {
-                this.send_game_state_to(player.uid);
+                this.send_game_state_to(player.uid, 'client_receives_game_state');
             }
         } );
     }
 
-    send_game_state_to(player_id) {
+    send_game_state_to(player_id, emit_code) {
         // let player_id = 0;
         
         let next_queue_id = this.players[player_id].queued_moves.length > 0 ? this.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
@@ -428,7 +428,7 @@ class Game {
         
         // send the game data the specified player
         // TODO this is currently emiting to everyone, need it to go to just the desired player
-        io.emit('client_receives_game_state', game_string); 
+        io.emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
         
     }
 
