@@ -1,8 +1,51 @@
 "use strict";
 
+// const mad_common = require("./mad_common");
+
+///////////
+// Shared constants
+///////////
+
+const TERRAIN_TYPE_WATER = 101;
+const TERRAIN_TYPE_SWAMP = 104 ;
+const TERRAIN_TYPE_MOUNTAIN = 105;
+const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106;
+const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107;
+
+const ENTITY_TYPE_ADMIRAL = 200;
+const ENTITY_TYPE_SHIP = 201;
+const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
+// const ENTITY_TYPE_INFANTRY = 205;
+
+const ACTION_MOVE_NORMAL = 1;
+const ACTION_MOVE_HALF = 2;
+const ACTION_MOVE_ALL = 3;
+const ACTION_MOVE_CITY = 4;
+const ACTION_MOVE_NONE = 5;
+
+
+const GAME_MODE_FFA = 1;
+const GAME_MODE_FFA_CUST = 2;
+const GAME_MODE_REPLAY = 3;
+
+const GAME_STATUS_INIT = 0; // loading;
+const GAME_STATUS_READY = 1; // able to start;
+const GAME_STATUS_IN_PROGRESS = 2; //;
+const GAME_STATUS_PAUSE = 3; //;
+const GAME_STATUS_GAME_OVER_WIN = 4; // game instance is complete and can no longer be played;
+const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no longer be played;
+
+const MIN_DISTANCE_ADMIRALS = 5;
+
+
 ///////////
 // Local App constants and global variables
 ///////////
+
+let client_socket;
+
 let canvas, context; // the canvas and context we will draw the game cells on
 let cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
 let game_tick_local;
@@ -32,30 +75,12 @@ let new_game_overlay_visible = false;
 let game_data; // info that persists for one game
 let game_state_data; // info that persists for one turn
 
-// var localStorage = window.localStorage; // TODO remove if this doesn't get implemented
-// window.localStorage.setItem('myKey', 'myValue');
-let myValue = localStorage.getItem('myKey');
-console.log(myValue)
+page_load_behavior() // define canvas and add event listeners
 
-///////////
-// Server constants and global variables
-///////////
-
-const DEFAULT_TICK_SPEED = 500; // default ms to wait before rendering each new frame
-
-// class GameLocal {
-//     constructor(game_data) {
-        
-//     }
-// }
- 
-
-///////////
-// Local App classes and functions
-///////////
 
 function show_new_game_overlay() {
-    toggle_pause_server(false, false) // hard set to paused
+    // toggle_pause_server(false, false) // hard set to paused
+    client_socket.emit('toggle_pause_server', false, false)
     
     document.getElementById('mad-overlay').style.display = 'block';
     new_game_overlay_visible = true;
@@ -64,7 +89,7 @@ function hide_new_game_overlay() {
     document.getElementById('mad-overlay').style.display = 'none';
     new_game_overlay_visible = false;
     
-    toggle_pause_server(false, true) // hard set to unpaused
+    client_socket.emit('toggle_pause_server', false, true) // hard set to unpaused
 }
 
 function game_loop_client() {
@@ -75,7 +100,6 @@ function game_loop_client() {
 }
 
 function add_slider(overlay_inner, id_prefix, display_name, min, max, step, starting_val) {
-
     let header_p = document.createElement('p');
     let slider_div = document.createElement('div');
     let slider_range = document.createElement('input')
@@ -94,6 +118,7 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_range.setAttribute('step', step)
     slider_range.value = starting_val;
     slider_range.addEventListener('change', function() {
+        console.log('I CHANGED A SLIDER')
         document.getElementById(`${id_prefix}_label`).innerHTML = `${slider_range.value}`;
     }, false);
 
@@ -101,10 +126,6 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_div.appendChild(header_p);
     slider_div.appendChild(slider_range);
     slider_div.appendChild(lbl_slider_val);
-
-    // # Fog of
-//     var x = document.createElement("INPUT");
-// x.setAttribute("type", "checkbox");
 }
 
 function populate_new_game_overlay(){
@@ -139,7 +160,6 @@ function populate_new_game_overlay(){
     add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5);
     add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5);
     
-    
     //document.getElementById('id').checked
     let lbl_fow = document.createElement('label')
     lbl_fow.innerHTML='Fog of War';
@@ -152,7 +172,6 @@ function populate_new_game_overlay(){
     radio_fog_on.checked= true;
     let lbl_fow_on = document.createElement('label')
     lbl_fow_on.innerHTML='On';
-    
     
     let radio_fog_off = document.createElement('input');
     radio_fog_off.id = 'radio_fog_off';
@@ -181,7 +200,7 @@ function populate_new_game_overlay(){
 function launch_new_game(event) { //TODO THIS MUST BE REFACTORED 
     console.log('launch new game!')
     
-    game_data = {
+    let game_data = {
         n_rows: document.getElementById('rows_range').value,
         n_cols: document.getElementById('cols_range').value,
         n_bots: document.getElementById('bots_range').value,
@@ -192,23 +211,22 @@ function launch_new_game(event) { //TODO THIS MUST BE REFACTORED
         ship_weight:Number(document.getElementById('ships_range').value),
         swamp_weight:Number(document.getElementById('swamps_range').value)
     };
-    console.log(JSON.stringify(game_data))
-    request_new_game(JSON.stringify(game_data));//
-    // init_server(JSON.stringify(game_data))
-
-    new_game_client(game_data);
+    
+    client_socket.emit('request_new_game', JSON.stringify(game_data))
 
     hide_new_game_overlay()
 }
 
+function page_load_behavior(){
+    canvas = document.getElementById('canvas'); // Get a reference to the canvas
+    canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
+    context = canvas.getContext('2d');
 
-//game init on server, event handlers on client side, canvas/context def on client
-function init_client(game_data_json){
-    console.log('Initializing a Madmirals instance')
+    canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
+    canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
+    canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
+    drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
     
-    game_data = JSON.parse(game_data_json);
-
-
     // Add event listener on keydown
     document.addEventListener('keydown', (event) => {
         if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
@@ -216,43 +234,35 @@ function init_client(game_data_json){
             handle_key_press(event.key)
         }
     }, false);
+}
 
 
+//game init on server, event handlers on client side, canvas/context def on client
+function init_client(game_data_string, sock){
+    client_socket = sock;
+    console.log('Initializing a Madmirals instance')
 
-    canvas = document.getElementById('canvas'); // Get a reference to the canvas
-    canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
-    context = canvas.getContext('2d');
-
-    canvas.height = CellClient.height*game_data.n_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.n_cols // canvas width must match cols*col_size
-
-    canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
-    canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
-    canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
-    drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
+    // console.log(game_data)
     
     sprite_sheet = new Image();
     sprite_sheet.src = './img/sprites3.png';
+    populate_new_game_overlay();
 
-    // create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
-    create_client_cells(game_data.n_rows, game_data.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    // console.log('initial game:', game_data.game.n_rows, game_data.game.n_cols)
+    new_game_client(game_data_string);
     render_board(); // display the starting conditions for the sim
     
-    populate_new_game_overlay();
-    
-    move_mode = ACTION_MOVE_NORMAL;
-
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
-function new_game_client() {
+function new_game_client(game_data_string) {
+    game_data = JSON.parse(game_data_string);
     //call this after a new game has been created at the server level
-    canvas.height = CellClient.height*game_data.n_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.n_cols // canvas width must match cols*col_size
-    create_client_cells(game_data.n_rows, game_data.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
+    create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    move_mode = ACTION_MOVE_NORMAL;
     render_board(); // display the starting conditions for the sim
-  
-    window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
 function get_player_color(owner){
@@ -265,7 +275,6 @@ function get_player_color(owner){
     };
 
     return neutral_entity_color; // if not found
-    
 }
 
 class CellClient {
@@ -299,8 +308,7 @@ class CellClient {
         }
         else {
             return CellClient.low_tide_color;
-        }
-
+        };
     }
 
     get_swamp_color() {
@@ -309,7 +317,7 @@ class CellClient {
         }
         else {
             return CellClient.swamp_color;
-        }
+        };
     }
 
     draw_cell() {
@@ -324,8 +332,6 @@ class CellClient {
         this.context.strokeRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
         
         if (this.visible) {
-
-
             if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
                 this.context.fillStyle = CellClient.mountain_color            
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
@@ -342,11 +348,9 @@ class CellClient {
                 // this.draw_outline();
                 this.context.fillStyle = get_player_color(this.owner)         
                 this.context.fillRect(this.col*CellClient.width+1, this.row*CellClient.height+1, CellClient.width-2, CellClient.height-2)
-                
             } 
 
             // this.draw_outline(water_color);
-            
             if (this.terrain != TERRAIN_TYPE_WATER) { 
                 this.draw_sprite(this.terrain);
             };
@@ -544,7 +548,7 @@ class CellClient {
 };
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
-    console.log('creating client cell grid', n_rows, n_cols)
+    // console.log('creating client cell grid', n_rows, n_cols)
     cells_client = []; // reset the array of cells, in case this isn't first game of session
 
     let id = 0;
@@ -557,6 +561,7 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
 }
 
 function render_board() {    
+    //console.log('render_board()')
     context.fillStyle=CellClient.hidden_color  
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
@@ -571,7 +576,7 @@ function render_board() {
     // Draw arrows over each square containig one or more queued moves
     local_move_queue.forEach(move => {
         let id;
-        id = move.row * game_data.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
+        id = move.row * game_data.game.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
         cells_client[id].draw_arrow(move.dir, move.action);
     }); 
 
@@ -651,8 +656,8 @@ function wheel_handler(event) {
 
         // canvas.height = CellClient.height*num_rows // canvas width must match cols*col_size
     // canvas.width = CellClient.width*num_cols // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.n_cols;
-    canvas.height = CellClient.height*game_data.n_rows;
+    canvas.width = CellClient.width*game_data.game.n_cols;
+    canvas.height = CellClient.height*game_data.game.n_rows;
 
     render_board();
 }
@@ -683,8 +688,7 @@ function select_cell_at(x, y) { // returns true if the active cell changed, and 
 
 function handle_key_press(key_key) {
     //If they user has pressed a movement key, then try to move the active cell
-    let dir, target_row, target_col;
-    
+    let target_row, target_col;
     if ((key_key == 'W' || key_key == 'w' || key_key == 'ArrowUp') && active_cell[0] > 0) {
         target_row = active_cell[0] - 1
         target_col = active_cell[1]
@@ -693,11 +697,11 @@ function handle_key_press(key_key) {
         target_row = active_cell[0]
         target_col = active_cell[1] - 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'left')
-    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game_data.n_rows - 1) { // down
+    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game_data.game.n_rows - 1) { // down
         target_row = active_cell[0] + 1
         target_col = active_cell[1]
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'down')
-    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game_data.n_cols - 1) { // right
+    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game_data.game.n_cols - 1) { // right
         target_row = active_cell[0]
         target_col = active_cell[1] + 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'right')
@@ -713,73 +717,30 @@ function handle_key_press(key_key) {
 }
 
 function cancel_queue() { //undo all queued moves
-    server_receives_cancel_queue(local_player_id)
+    client_socket.emit('cancel_move_queue', local_player_id);
     local_move_queue.length = 0 // empty the queue list. Do not bother updating active cell location
     render_board();
 }
 
 function undo_queued_move() { //undo last queued move and return active cell to it
     if (local_move_queue.length > 0) {
-        let popped = local_move_queue.pop();
-        
+        let popped = local_move_queue.pop();        
         active_cell[0] = popped.row;
         active_cell[1] = popped.col;
-        
-        server_receives_undo_queued_move(local_player_id, popped.id)
-
+        client_socket.emit('undo_queued_move', local_player_id, popped.id) //, local_player_id, new_move)
         render_board();
     }
 }
-
-function weighted_choice(arr_options) {
-//Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
-    let total_weight = 0; 
-    arr_options.forEach(option => { total_weight += Math.max(option.weight,0) }); // sum up the individual weights to determine the scale of our randrange
-
-    let rand_weight = Math.random()*total_weight;
-
-    let traversed_weight = 0, arr_pos = -1;
-    while(traversed_weight < rand_weight && arr_pos < arr_options.length - 1) {
-        arr_pos++;
-        traversed_weight += arr_options[arr_pos].weight
-    }
-    return arr_options[arr_pos]
-
-}
-
-function test_weighted_choice() {
-    let num_tests = 10000;
-    let weighted_choice_data = [
-        {'value1':'value_0', 'other_val_1':'test', 'weight':0}, // 0 should never be selected
-        {'value1':'value_1', 'other_val_1':'test', 'weight':1},
-        {'value1':'value_2', 'other_val_1':'test', 'weight':2},
-        {'value1':'value_3', 'other_val_1':'test', 'weight':3},
-        {'value1':'value_4', 'other_val_1':'test', 'weight':4},
-        {'value1':'value_5', 'other_val_1':'test', 'weight':5},
-        {'value1':'value_6', 'other_val_1':'test', 'weight':6},
-        {'value1':'value_7', 'other_val_1':'test', 'weight':7},
-        {'value1':'value_8', 'other_val_1':'test', 'weight':8},
-        {'value1':'value_9', 'other_val_1':'test', 'weight':9}, // a weight of 9 should be selected ~9x as often as a weight of 1
-        {'value1':'value_10', 'other_val_1':'test', 'weight':-10}, // should default to 0
-    ];
-
-    let arr_results = new Array(11).fill(0);
-
-    for (let i = 0; i < num_tests; i++) {
-        let result = weighted_choice(weighted_choice_data)
-        arr_results[result.weight] ++
-    };
-    console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
-}
-      
 
 function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     local_queued_move_counter ++;
     let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
     //to do queuer: 0 assumes player is always player 0
-    server_receives_new_queued_moved(local_player_id, new_move)
-    local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
     
+    client_socket.emit('queue_new_move', new_move) //, local_player_id, new_move)
+
+    local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
+    // console.log(new_move)
     if (move_mode == ACTION_MOVE_HALF) {move_mode = ACTION_MOVE_NORMAL} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
 
     // Update the active/highlighted cell to match the new target
@@ -834,22 +795,18 @@ function drag_canvas_event_handler(canvas_element) {
 }
 
 function toggle_pause() { //single player mode only. 
-// In order to keep the faux separation of server and client, this function cannot access game_on directly. 
-// This function would become an event handler when node mode activated
-    let new_pause_status = toggle_pause_server(true); // true as in toggle and don't look for a second parameter setting it to a specific value
-    
-    // Update the button text to indicate the action it would perform
-    document.getElementById('pause_resume_button').innerText = new_pause_status ? 'Pause' : 'Play';
+    // console.log('attempting to toggle_pause')
+    client_socket.emit('toggle_pause_server', true, true);
 }
 
 function client_receives_game_state_here(game_state_string) {
     game_state_data = JSON.parse(game_state_string);
-    
+    // console.log(game_state_data)
+
     if (cells_client.length > 0) {    
         //console.log('Attempting a new way of rendering')
         
         game_tick_local = game_state_data.game.turn // update the turn count
-        
         // Update the board to contain only info the player should currently be able to see
         cells_client.forEach(cell => {
             cell.owner = null;

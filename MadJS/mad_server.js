@@ -1,43 +1,61 @@
 "use strict";
 
-///////////
-// Server constants and global variables
-///////////
+const path_finder = require("./path_finder");
+// const mad_common = require("./mad_common");
+// const c = require("./mad_constants");
 
 let game = null;
 
 ///////////
-// Server classes and functions
+// Shared constants
 ///////////
 
-// function get_game_starting_data_json() {
-//     obj = { row_count: 10,
-//             col_count: 15,
-//             board: [] }           
-        
-//     // let game_string = '{ "game": {' +
-//     // `"state" : "${this.game_on}",` +
-//     // `"turn": "${this.game_tick_server}",` +
-//     // `"row_count": "${this.num_rows}",` +
-//     // `"col_count": "${this.num_cols}",` +
-//     // `"next_queue_id": "${next_queue_id}"` +
-//     // '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
+const TERRAIN_TYPE_WATER = 101;
+const TERRAIN_TYPE_SWAMP = 104 ;
+const TERRAIN_TYPE_MOUNTAIN = 105;
+const TERRAIN_TYPE_MOUNTAIN_CRACKED = 106;
+const TERRAIN_TYPE_MOUNTAIN_BROKEN = 107;
+
+const ENTITY_TYPE_ADMIRAL = 200;
+const ENTITY_TYPE_SHIP = 201;
+const ENTITY_TYPE_SHIP_2 = 202 // combine 2 ships to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_3 = 203 // combine 1 ship_2 with a ship to make this. Increased growth rate;
+const ENTITY_TYPE_SHIP_4 = 204 // combine 2 ship_2s or 1 ship_3 and 1 ship to make this. Increased growth rate;
+// const ENTITY_TYPE_INFANTRY = 205;
+
+const ACTION_MOVE_NORMAL = 1;
+const ACTION_MOVE_HALF = 2;
+const ACTION_MOVE_ALL = 3;
+const ACTION_MOVE_CITY = 4;
+const ACTION_MOVE_NONE = 5;
 
 
-//     return JSON.stringify(obj);
+const GAME_MODE_FFA = 1;
+const GAME_MODE_FFA_CUST = 2;
+const GAME_MODE_REPLAY = 3;
 
+const GAME_STATUS_INIT = 0; // loading;
+const GAME_STATUS_READY = 1; // able to start;
+const GAME_STATUS_IN_PROGRESS = 2; //;
+const GAME_STATUS_PAUSE = 3; //;
+const GAME_STATUS_GAME_OVER_WIN = 4; // game instance is complete and can no longer be played;
+const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no longer be played;
+
+const MIN_DISTANCE_ADMIRALS = 5;
+
+const DEFAULT_TICK_SPEED = 500;
+
+
+
+// function game_loop_server() {
+//     // console.log('tick')
+//     if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
+//         check_for_game_over();
+//         game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+//         game.send_game_state_to_players();
+//     }
+//     setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
 // }
-
-
-function game_loop_server() {
-    // console.log('tick')
-    if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
-        check_for_game_over();
-        game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-        game.send_game_state_to_players();
-    }
-    setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
-}
 
 class Game {
     // game = new Game(n_rows, n_cols, fog_of_war, 1, human_player_info, num_bots, starting_troops, water_weight, mountain_weight, swamp_weight, ship_weight);
@@ -52,8 +70,8 @@ class Game {
         this.num_cols =  n_cols
         this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
         this.initialize_cells();
-        this.astar_board = new ABoard(this.num_rows, this.num_cols, 0);
-        this.astar = new AStar(this.astar_board);
+        this.astar_board = new path_finder.ABoard(this.num_rows, this.num_cols, 0);
+        this.astar = new path_finder.AStar(this.astar_board);
         this.game_tick_server = -1;
         this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
 
@@ -76,7 +94,7 @@ class Game {
         let id = 0;
         for(let r = 0; r < this.num_rows; r++) {
             for(let c = 0; c < this.num_cols; c++) {
-                this.cells.push(new CellServer(context, id, r, c));
+                this.cells.push(new CellServer(id, r, c));
                 id++;;
             }
         }
@@ -351,12 +369,12 @@ class Game {
     send_game_state_to_players() {
         this.players.forEach(player => {
             if (player.is_human) {
-                this.send_game_state_to(player.uid);
+                this.send_game_state_to(player.uid, 'client_receives_game_state');
             }
         } );
     }
 
-    send_game_state_to(player_id) {
+    send_game_state_to(player_id, emit_code) {
         // let player_id = 0;
         
         let next_queue_id = this.players[player_id].queued_moves.length > 0 ? this.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
@@ -365,8 +383,8 @@ class Game {
         let game_string = '{ "game": {' +
             `"state" : "${this.game_on}",` +
             `"turn": "${this.game_tick_server}",` +
-            `"row_count": "${this.num_rows}",` +
-            `"col_count": "${this.num_cols}",` +
+            `"n_rows": "${this.num_rows}",` +
+            `"n_cols": "${this.num_cols}",` +
             `"next_queue_id": "${next_queue_id}"` +
             '}, "board":[  '; // the two trailing spaces are intentional -- if no board cells are included, then the slicing below will still work smoothly
 
@@ -405,10 +423,9 @@ class Game {
         game_string = game_string.slice(0,-2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
         game_string += '] }'; // close the scoreboard and whole json object
         
-
-        // console.log(game_string);    
-        // console.log(game_json.this.row_count);
-        client_receives_game_state_here(game_string)
+        // send the game data the specified player
+        // TODO this is currently emiting to everyone, need it to go to just the desired player
+        io.emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
         
     }
 
@@ -416,7 +433,7 @@ class Game {
 
 
 class CellServer {
-    constructor(context, id, row, col) {
+    constructor(id, row, col) {
         this.id = id //position w/in the 1d array of cells
         this.row = row;
         this.col = col;
@@ -721,30 +738,12 @@ class Bot {
 //if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
 function init_server(game_data_json) {
     request_new_game(game_data_json) // server side initiation process for a new game
-
-    game.send_game_state_to_players();
-    game_loop_server()
+    
+    //new_game_from_server
+    // game.send_game_state_to_players();
+    // game_loop_server()
 }
 
-
-
-function server_receives_new_queued_moved(player_id, new_move) {
-    game.players[player_id].queued_moves.push(new_move);
-}
-
-function server_receives_undo_queued_move(player_id, popped_item_id) {
-    // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
-    let not_caught_up = true;
-    while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
-        if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
-            game.players[player_id].queued_moves.pop();
-        } else { not_caught_up = false; }; //escape 
-    };
-}
-
-function server_receives_cancel_queue(player_id) {
-    game.players[player_id].queued_moves.length = 0;
-}
 
 function should_be_visible(cell, player_id, fog_of_war_distance) {
     if (!game.fog_of_war) {
@@ -764,8 +763,8 @@ function should_be_visible(cell, player_id, fog_of_war_distance) {
 }
 
 function request_new_game(game_data_json) {
-
     let game_data = JSON.parse(game_data_json)
+
     // For each possible game setting, use the json input value, if present, and default to random/default values
     let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
     let n_cols = 'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);;;
@@ -809,6 +808,8 @@ function request_new_game(game_data_json) {
     
     game.status = GAME_STATUS_IN_PROGRESS
     game.game_on = true; // start with the simulation running instead of paused
+
+    game.send_game_state_to(0, 'new_game_from_server');
 }
 
 
@@ -840,16 +841,13 @@ function get_owned_neighbors(cell, player_id, fog_of_war_distance) { // Returns 
     return num_neighbors
 }
 
-
-
 function get_cell_by_coords(row, col) { // Returns the server cell object at the given row and column
     return game.cells[row*game.num_cols+col]
 }
 
-
 function check_for_game_over() {
     //if the game has been won, lost, or abandoned, mark it as such and alert the user
-    
+
     let troop_count = new Array(game.players.length).fill(0);
     let admiral_count = new Array(game.players.length).fill(0);
     game.cells.forEach(cell => {
@@ -874,24 +872,145 @@ function check_for_game_over() {
     if (remaining_humans_count == 0) {
         game.game_on = false;
         console.log('Game over! Humans lose.'); // TODO pass this info on to the client
-        alert('Game over! Humans lose.'); // TODO pass this info on to the client //placeholder for now
-        
-    
     } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
         game.game_on = false;
-        console.log(`Game over! Player (TBD) wins!!!`); // TODO pass this info on to the client
-        alert(`You win! Congrats!`); // TODO pass this info on to the client //placeholder for now
+        console.log(`Game over! Player wins!!!`); // TODO pass this info on to the client
     };
 }
 
+function weighted_choice(arr_options) {
+//Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
+    let total_weight = 0; 
+    arr_options.forEach(option => { total_weight += Math.max(option.weight,0) }); // sum up the individual weights to determine the scale of our randrange
 
-function toggle_pause_server(toggle, override) {
-    if (toggle) {
-        game.game_on = ! game.game_on
+    let rand_weight = Math.random()*total_weight;
+
+    let traversed_weight = 0, arr_pos = -1;
+    while(traversed_weight < rand_weight && arr_pos < arr_options.length - 1) {
+        arr_pos++;
+        traversed_weight += arr_options[arr_pos].weight
     }
-    else {
-        game.game_on = override
-    }
-    console.log('Toggling pause')
-    
+    return arr_options[arr_pos]
 }
+    
+function test_weighted_choice() {
+    let num_tests = 10000;
+    let weighted_choice_data = [
+        {'value1':'value_0', 'other_val_1':'test', 'weight':0}, // 0 should never be selected
+        {'value1':'value_1', 'other_val_1':'test', 'weight':1},
+        {'value1':'value_2', 'other_val_1':'test', 'weight':2},
+        {'value1':'value_3', 'other_val_1':'test', 'weight':3},
+        {'value1':'value_4', 'other_val_1':'test', 'weight':4},
+        {'value1':'value_5', 'other_val_1':'test', 'weight':5},
+        {'value1':'value_6', 'other_val_1':'test', 'weight':6},
+        {'value1':'value_7', 'other_val_1':'test', 'weight':7},
+        {'value1':'value_8', 'other_val_1':'test', 'weight':8},
+        {'value1':'value_9', 'other_val_1':'test', 'weight':9}, // a weight of 9 should be selected ~9x as often as a weight of 1
+        {'value1':'value_10', 'other_val_1':'test', 'weight':-10}, // should default to 0
+    ];
+
+    let arr_results = new Array(11).fill(0);
+
+    for (let i = 0; i < num_tests; i++) {
+        let result = weighted_choice(weighted_choice_data)
+        arr_results[result.weight] ++
+    };
+    console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
+}
+        
+const express = require('express');
+const app = express();
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server);
+
+var visitor_ct = 0;
+
+app.use(express.static('./'))
+// app.use(express.static('./assets/')); // enable node to access the assets folder
+
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
+io.on('connection', (socket) => {
+    console.log(`user ${socket.id} connected`);
+    game.send_game_state_to(0, 'client_connected')
+    //socket.emit('client_connected', 'test')
+
+    socket.on('queue_new_move', (new_move) => {
+        //console.log('queue_new_move', new_move);
+        game.players[new_move.queuer].queued_moves.push(new_move);
+    } );
+
+    socket.on('undo_queued_move', (player_id, popped_item_id) => {
+        // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
+        let not_caught_up = true;
+        while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
+            if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
+                game.players[player_id].queued_moves.pop();
+            } else { not_caught_up = false; }; //escape 
+        };
+    } );
+
+    socket.on('cancel_move_queue', (player_id) => {
+        game.players[player_id].queued_moves.length = 0;
+    } );
+
+    socket.on('request_new_game', (game_data_json) => {
+        console.log('request_new_game')
+        // console.log(game_data_json)
+        request_new_game(game_data_json);
+    } );
+
+    socket.on('toggle_pause_server', (toggle, override) => {
+        if (toggle) {
+            console.log('Toggling pause to', game.game_on)
+            game.game_on = ! game.game_on
+        }
+        else {
+            console.log('Setting pause to', ! override)
+            game.game_on = override
+        }    
+    
+        io.emit('toggle_pause_received', game.game_on)
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`user ${socket.id} disconnected`);
+    });
+    
+
+
+} );
+
+server.listen(3000, () => {
+    console.log('Listening on *:3000');
+
+    let start_time = Date.now()
+
+    let starting_game_settings =  {
+        n_rows: 15,
+        n_cols: 25,
+        n_bots: 2,
+        fog_of_war: false
+    };
+    let game_data_string = JSON.stringify(starting_game_settings); //TODO socket.io says There is no need to run JSON.stringify() on objects as it will be done for you.
+ //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
+    init_server(game_data_string)
+    
+    setInterval(function(){
+        // console.log('tick')
+
+        if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
+            check_for_game_over();
+            game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+            game.send_game_state_to_players();
+        }
+
+       // io.emit('news_by_server', 'testing');
+    }, DEFAULT_TICK_SPEED);
+});
+
+
