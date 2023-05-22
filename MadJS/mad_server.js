@@ -763,10 +763,8 @@ function should_be_visible(cell, player_id, fog_of_war_distance) {
 }
 
 function request_new_game(game_data_json) {
-
     let game_data = JSON.parse(game_data_json)
 
-    console.log(game_data)
     // For each possible game setting, use the json input value, if present, and default to random/default values
     let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
     let n_cols = 'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);;;
@@ -843,16 +841,13 @@ function get_owned_neighbors(cell, player_id, fog_of_war_distance) { // Returns 
     return num_neighbors
 }
 
-
-
 function get_cell_by_coords(row, col) { // Returns the server cell object at the given row and column
     return game.cells[row*game.num_cols+col]
 }
 
-
 function check_for_game_over() {
     //if the game has been won, lost, or abandoned, mark it as such and alert the user
-    
+
     let troop_count = new Array(game.players.length).fill(0);
     let admiral_count = new Array(game.players.length).fill(0);
     game.cells.forEach(cell => {
@@ -877,13 +872,9 @@ function check_for_game_over() {
     if (remaining_humans_count == 0) {
         game.game_on = false;
         console.log('Game over! Humans lose.'); // TODO pass this info on to the client
-        //alert('Game over! Humans lose.'); // TODO pass this info on to the client //placeholder for now
-        
-    
     } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
         game.game_on = false;
-        console.log(`Game over! Player (TBD) wins!!!`); // TODO pass this info on to the client
-        //alert(`You win! Congrats!`); // TODO pass this info on to the client //placeholder for now
+        console.log(`Game over! Player wins!!!`); // TODO pass this info on to the client
     };
 }
 
@@ -900,7 +891,6 @@ function weighted_choice(arr_options) {
         traversed_weight += arr_options[arr_pos].weight
     }
     return arr_options[arr_pos]
-
 }
     
 function test_weighted_choice() {
@@ -928,10 +918,6 @@ function test_weighted_choice() {
     console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
 }
         
-
-
-
-
 const express = require('express');
 const app = express();
 const http = require('http');
@@ -942,15 +928,14 @@ const io = new Server(server);
 var visitor_ct = 0;
 
 app.use(express.static('./'))
+// app.use(express.static('./assets/')); // enable node to access the assets folder
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
-// app.use('/assets',express.static(__dirname +'/assets')); // enable node to access the assets folder
-
 io.on('connection', (socket) => {
-    console.log('user connected');
+    console.log(`user ${socket.id} connected`);
     game.send_game_state_to(0, 'client_connected')
     //socket.emit('client_connected', 'test')
 
@@ -975,8 +960,7 @@ io.on('connection', (socket) => {
 
     socket.on('request_new_game', (game_data_json) => {
         console.log('request_new_game')
-        console.log(game_data_json)
-        
+        // console.log(game_data_json)
         request_new_game(game_data_json);
     } );
 
@@ -991,6 +975,10 @@ io.on('connection', (socket) => {
         }    
     
         io.emit('toggle_pause_received', game.game_on)
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`user ${socket.id} disconnected`);
     });
     
 

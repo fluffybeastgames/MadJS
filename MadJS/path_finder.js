@@ -3,7 +3,6 @@
 class AStar {
     constructor(board) {
         this.board = board;
-
     }
 
     node_is_traversable(node_address, target_address) {
@@ -94,11 +93,9 @@ class AStar {
         let current_node;
     
         // Create the starting node at the start_address
-
         // console.log(start_address, target_address)
         open_set.push(new AStarNode(null, start_address, target_address));
         
-
         // while (open_set.length > 0 && !target_found && closed_set.length < this.board.num_rows*this.board.num_cols) {
         while (open_set.length > 0 && !target_found) {            
             open_set.sort((a, b) => (a.f > b.f) ? 1 : -1); //sort the open nodes by their F value, ascending, in order to optimize search/final path
@@ -178,7 +175,6 @@ class AStarNode {
     }
 }
 
-
 class ABoard {
     constructor(num_rows, num_cols, rand_obstacle_rate) {
         this.num_rows = num_rows;
@@ -236,3 +232,4 @@ function test_path_finder() {
 }
 
 // test_path_finder();
+module.exports = {AStar, ABoard}; //, ACell, AStarNode};
