@@ -116,9 +116,11 @@
                 init_client(game_state_string, socket)
             });
             
-            // socket.on('emit_test', function(msg) {
-            //     console.log('huh')
-            // });
+            socket.on('new_game_from_server', function(game_state_string) {
+                console.log('new_game_from_server');
+                new_game_client(game_state_string);
+                // client_receives_game_state_here(game_state_string);
+            });
 
         </script>
 

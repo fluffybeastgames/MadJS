@@ -122,6 +122,7 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_range.setAttribute('step', step)
     slider_range.value = starting_val;
     slider_range.addEventListener('change', function() {
+        console.log('I CHANGED A SLIDER')
         document.getElementById(`${id_prefix}_label`).innerHTML = `${slider_range.value}`;
     }, false);
 
@@ -209,7 +210,7 @@ function populate_new_game_overlay(){
 function launch_new_game(event) { //TODO THIS MUST BE REFACTORED 
     console.log('launch new game!')
     
-    game_data = {
+    let game_data = {
         n_rows: document.getElementById('rows_range').value,
         n_cols: document.getElementById('cols_range').value,
         n_bots: document.getElementById('bots_range').value,
@@ -220,11 +221,11 @@ function launch_new_game(event) { //TODO THIS MUST BE REFACTORED
         ship_weight:Number(document.getElementById('ships_range').value),
         swamp_weight:Number(document.getElementById('swamps_range').value)
     };
-    console.log(JSON.stringify(game_data))
-    request_new_game(JSON.stringify(game_data));//
-    // init_server(JSON.stringify(game_data))
-
-    new_game_client(game_data);
+    //console.log(JSON.stringify(game_data))
+    //request_new_game(JSON.stringify(game_data));//
+    //client_socket.emit('request_new_game', game_data) // game data will be stringified automatically by socket
+    client_socket.emit('request_new_game', JSON.stringify(game_data))
+    // new_game_client(game_data);
 
     hide_new_game_overlay()
 }
@@ -246,8 +247,6 @@ function page_load_behavior(){
             handle_key_press(event.key)
         }
     }, false);
-
-
 }
 
 
@@ -255,32 +254,27 @@ function page_load_behavior(){
 function init_client(game_data_string, sock){
     client_socket = sock;
     console.log('Initializing a Madmirals instance')
-    
-    game_data = JSON.parse(game_data_string);
+
     // console.log(game_data)
     
     sprite_sheet = new Image();
     sprite_sheet.src = './img/sprites3.png';
+    populate_new_game_overlay();
 
-    create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
-
-    canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
-
+    // console.log('initial game:', game_data.game.n_rows, game_data.game.n_cols)
+    new_game_client(game_data_string);
     render_board(); // display the starting conditions for the sim
     
-    populate_new_game_overlay();
-    
-    move_mode = ACTION_MOVE_NORMAL;
-
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
-function new_game_client() {
+function new_game_client(game_data_string) {
+    game_data = JSON.parse(game_data_string);
     //call this after a new game has been created at the server level
     canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
     canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
     create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    move_mode = ACTION_MOVE_NORMAL;
     render_board(); // display the starting conditions for the sim
 }
 
@@ -567,7 +561,7 @@ class CellClient {
 };
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
-    console.log('creating client cell grid', n_rows, n_cols)
+    // console.log('creating client cell grid', n_rows, n_cols)
     cells_client = []; // reset the array of cells, in case this isn't first game of session
 
     let id = 0;
@@ -675,8 +669,8 @@ function wheel_handler(event) {
 
         // canvas.height = CellClient.height*num_rows // canvas width must match cols*col_size
     // canvas.width = CellClient.width*num_cols // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.n_cols;
-    canvas.height = CellClient.height*game_data.n_rows;
+    canvas.width = CellClient.width*game_data.game.n_cols;
+    canvas.height = CellClient.height*game_data.game.n_rows;
 
     render_board();
 }
@@ -746,9 +740,7 @@ function undo_queued_move() { //undo last queued move and return active cell to 
         let popped = local_move_queue.pop();        
         active_cell[0] = popped.row;
         active_cell[1] = popped.col;
-
         client_socket.emit('undo_queued_move', local_player_id, popped.id) //, local_player_id, new_move)
-
         render_board();
     }
 }
@@ -758,9 +750,8 @@ function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
     //to do queuer: 0 assumes player is always player 0
     
-    console.log('here')
     client_socket.emit('queue_new_move', new_move) //, local_player_id, new_move)
-    // server_receives_new_queued_moved(local_player_id, new_move)
+
     local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
     // console.log(new_move)
     if (move_mode == ACTION_MOVE_HALF) {move_mode = ACTION_MOVE_NORMAL} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode

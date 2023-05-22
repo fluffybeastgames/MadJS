@@ -738,8 +738,9 @@ class Bot {
 //if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
 function init_server(game_data_json) {
     request_new_game(game_data_json) // server side initiation process for a new game
-
-    game.send_game_state_to_players();
+    
+    //new_game_from_server
+    // game.send_game_state_to_players();
     // game_loop_server()
 }
 
@@ -764,6 +765,8 @@ function should_be_visible(cell, player_id, fog_of_war_distance) {
 function request_new_game(game_data_json) {
 
     let game_data = JSON.parse(game_data_json)
+
+    console.log(game_data)
     // For each possible game setting, use the json input value, if present, and default to random/default values
     let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
     let n_cols = 'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);;;
@@ -807,6 +810,8 @@ function request_new_game(game_data_json) {
     
     game.status = GAME_STATUS_IN_PROGRESS
     game.game_on = true; // start with the simulation running instead of paused
+
+    game.send_game_state_to(0, 'new_game_from_server');
 }
 
 
@@ -963,7 +968,6 @@ io.on('connection', (socket) => {
 
     socket.on('queue_new_move', (new_move) => {
         //console.log('queue_new_move', new_move);
-        console.log('queue_new_move', new_move)
         game.players[new_move.queuer].queued_moves.push(new_move);
     } );
 
@@ -980,6 +984,15 @@ io.on('connection', (socket) => {
     socket.on('cancel_move_queue', (player_id) => {
         game.players[player_id].queued_moves.length = 0;
     } );
+
+    socket.on('request_new_game', (game_data_json) => {
+        console.log('request_new_game')
+        console.log(game_data_json)
+        
+        request_new_game(game_data_json);
+    } );
+    
+
 
 } );
 
