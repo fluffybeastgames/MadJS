@@ -372,12 +372,12 @@ class Game {
     send_game_state_to_players() {
         this.players.forEach(player => {
             if (player.is_human) {
-                this.send_game_state_to(player.uid);
+                this.send_game_state_to(player.uid, 'client_receives_game_state');
             }
         } );
     }
 
-    send_game_state_to(player_id) {
+    send_game_state_to(player_id, emit_code) {
         // let player_id = 0;
         
         let next_queue_id = this.players[player_id].queued_moves.length > 0 ? this.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
@@ -427,11 +427,12 @@ class Game {
         game_string += '] }'; // close the scoreboard and whole json object
         
 
-        console.log(game_string);    
+        // console.log(game_string);    
         // console.log(game_json.this.row_count);
 
         //TODO restore/update : client_receives_game_state_here(game_string)
-        console.log('client would receive above string normally')
+        console.log('SENDING client_receives_game_state', emit_code)
+        io.emit(emit_code, game_string);
         
     }
 
@@ -973,9 +974,19 @@ const io = new Server(server);
 
 var visitor_ct = 0;
 
+app.use(express.static('./'))
+
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
+
+io.on('connection', (socket) => {
+    console.log('user connected');
+    'client_receives_game_state'
+    game.send_game_state_to(0, 'client_connected')
+    //socket.emit('client_connected', 'test')
+} );
+
 
 server.listen(3000, () => {
     console.log('Listening on *:3000');
@@ -986,7 +997,7 @@ server.listen(3000, () => {
         n_rows: 15,
         n_cols: 25,
         n_bots: 2,
-        fog_of_war: false
+        fog_of_war: true
     };
     let game_data_string = JSON.stringify(starting_game_settings);
  //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
@@ -1001,7 +1012,7 @@ server.listen(3000, () => {
             game.send_game_state_to_players();
         }
 
-        io.emit('news_by_server', 'testing');
+       // io.emit('news_by_server', 'testing');
     }, 1000);
 });
 

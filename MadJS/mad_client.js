@@ -74,10 +74,7 @@ let new_game_overlay_visible = false;
 let game_data; // info that persists for one game
 let game_state_data; // info that persists for one turn
 
-// var localStorage = window.localStorage; // TODO remove if this doesn't get implemented
-// window.localStorage.setItem('myKey', 'myValue');
-let myValue = localStorage.getItem('myKey');
-console.log(myValue)
+console.log('testing!!!')
 
 
 ///////////
@@ -233,10 +230,10 @@ function launch_new_game(event) { //TODO THIS MUST BE REFACTORED
 
 
 //game init on server, event handlers on client side, canvas/context def on client
-function init_client(game_data_json){
+function init_client(game_data_string){
     console.log('Initializing a Madmirals instance')
     
-    game_data = JSON.parse(game_data_json);
+    game_data = JSON.parse(game_data_string);
 
 
     // Add event listener on keydown
