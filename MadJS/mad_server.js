@@ -887,18 +887,6 @@ function check_for_game_over() {
     };
 }
 
-
-function toggle_pause_server(toggle, override) {
-    if (toggle) {
-        game.game_on = ! game.game_on
-    }
-    else {
-        game.game_on = override
-    }
-    console.log('Toggling pause')
-    
-}
-
 function weighted_choice(arr_options) {
 //Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
     let total_weight = 0; 
@@ -991,6 +979,19 @@ io.on('connection', (socket) => {
         
         request_new_game(game_data_json);
     } );
+
+    socket.on('toggle_pause_server', (toggle, override) => {
+        if (toggle) {
+            console.log('Toggling pause to', game.game_on)
+            game.game_on = ! game.game_on
+        }
+        else {
+            console.log('Setting pause to', ! override)
+            game.game_on = override
+        }    
+    
+        io.emit('toggle_pause_received', game.game_on)
+    });
     
 
 

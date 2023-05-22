@@ -122,6 +122,11 @@
                 // client_receives_game_state_here(game_state_string);
             });
 
+            socket.on('toggle_pause_received', function(game_is_now_on) {
+                // console.log ('game paused. game_on == ', game_is_now_on)
+                document.getElementById('pause_resume_button').innerText = game_is_now_on ? 'Pause' : 'Play';
+            });
+
         </script>
 
     <footer class="w3-container w3-theme-dark w3-padding-8" style="position:fixed;bottom:0;width:100%">

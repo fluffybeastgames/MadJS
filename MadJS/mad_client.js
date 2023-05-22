@@ -75,15 +75,12 @@ let new_game_overlay_visible = false;
 let game_data; // info that persists for one game
 let game_state_data; // info that persists for one turn
 
-
 page_load_behavior() // define canvas and add event listeners
 
-///////////
-// Local App classes and functions
-///////////
 
 function show_new_game_overlay() {
     // toggle_pause_server(false, false) // hard set to paused
+    client_socket.emit('toggle_pause_server', false, false)
     
     document.getElementById('mad-overlay').style.display = 'block';
     new_game_overlay_visible = true;
@@ -92,7 +89,7 @@ function hide_new_game_overlay() {
     document.getElementById('mad-overlay').style.display = 'none';
     new_game_overlay_visible = false;
     
-    // toggle_pause_server(false, true) // hard set to unpaused
+    client_socket.emit('toggle_pause_server', false, true) // hard set to unpaused
 }
 
 function game_loop_client() {
@@ -103,7 +100,6 @@ function game_loop_client() {
 }
 
 function add_slider(overlay_inner, id_prefix, display_name, min, max, step, starting_val) {
-
     let header_p = document.createElement('p');
     let slider_div = document.createElement('div');
     let slider_range = document.createElement('input')
@@ -130,10 +126,6 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_div.appendChild(header_p);
     slider_div.appendChild(slider_range);
     slider_div.appendChild(lbl_slider_val);
-
-    // # Fog of
-//     var x = document.createElement("INPUT");
-// x.setAttribute("type", "checkbox");
 }
 
 function populate_new_game_overlay(){
@@ -168,7 +160,6 @@ function populate_new_game_overlay(){
     add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5);
     add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5);
     
-    
     //document.getElementById('id').checked
     let lbl_fow = document.createElement('label')
     lbl_fow.innerHTML='Fog of War';
@@ -181,7 +172,6 @@ function populate_new_game_overlay(){
     radio_fog_on.checked= true;
     let lbl_fow_on = document.createElement('label')
     lbl_fow_on.innerHTML='On';
-    
     
     let radio_fog_off = document.createElement('input');
     radio_fog_off.id = 'radio_fog_off';
@@ -221,11 +211,8 @@ function launch_new_game(event) { //TODO THIS MUST BE REFACTORED
         ship_weight:Number(document.getElementById('ships_range').value),
         swamp_weight:Number(document.getElementById('swamps_range').value)
     };
-    //console.log(JSON.stringify(game_data))
-    //request_new_game(JSON.stringify(game_data));//
-    //client_socket.emit('request_new_game', game_data) // game data will be stringified automatically by socket
+    
     client_socket.emit('request_new_game', JSON.stringify(game_data))
-    // new_game_client(game_data);
 
     hide_new_game_overlay()
 }
@@ -808,12 +795,8 @@ function drag_canvas_event_handler(canvas_element) {
 }
 
 function toggle_pause() { //single player mode only. 
-// In order to keep the faux separation of server and client, this function cannot access game_on directly. 
-// This function would become an event handler when node mode activated
-    let new_pause_status = toggle_pause_server(true); // true as in toggle and don't look for a second parameter setting it to a specific value
-    
-    // Update the button text to indicate the action it would perform
-    document.getElementById('pause_resume_button').innerText = new_pause_status ? 'Pause' : 'Play';
+    // console.log('attempting to toggle_pause')
+    client_socket.emit('toggle_pause_server', true, true);
 }
 
 function client_receives_game_state_here(game_state_string) {
