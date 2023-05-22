@@ -40,11 +40,12 @@ const GAME_STATUS_GAME_OVER_LOSE = 5; // game instance is complete and can no lo
 const MIN_DISTANCE_ADMIRALS = 5;
 
 
-
-
 ///////////
 // Local App constants and global variables
 ///////////
+
+let client_socket;
+
 let canvas, context; // the canvas and context we will draw the game cells on
 let cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
 let game_tick_local;
@@ -74,8 +75,8 @@ let new_game_overlay_visible = false;
 let game_data; // info that persists for one game
 let game_state_data; // info that persists for one turn
 
-console.log('testing!!!')
 
+page_load_behavior() // define canvas and add event listeners
 
 ///////////
 // Local App classes and functions
@@ -228,23 +229,7 @@ function launch_new_game(event) { //TODO THIS MUST BE REFACTORED
     hide_new_game_overlay()
 }
 
-
-//game init on server, event handlers on client side, canvas/context def on client
-function init_client(game_data_string){
-    console.log('Initializing a Madmirals instance')
-    
-    game_data = JSON.parse(game_data_string);
-    console.log(game_data)
-
-
-    // Add event listener on keydown
-    document.addEventListener('keydown', (event) => {
-        if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
-            event.preventDefault();
-            handle_key_press(event.key)
-        }
-    }, false);
-
+function page_load_behavior(){
     canvas = document.getElementById('canvas'); // Get a reference to the canvas
     canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
     context = canvas.getContext('2d');
@@ -254,12 +239,31 @@ function init_client(game_data_string){
     canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
     drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
     
+    // Add event listener on keydown
+    document.addEventListener('keydown', (event) => {
+        if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
+            event.preventDefault();
+            handle_key_press(event.key)
+        }
+    }, false);
+
+
+}
+
+
+//game init on server, event handlers on client side, canvas/context def on client
+function init_client(game_data_string, sock){
+    client_socket = sock;
+    console.log('Initializing a Madmirals instance')
+    
+    game_data = JSON.parse(game_data_string);
+    // console.log(game_data)
+    
     sprite_sheet = new Image();
     sprite_sheet.src = './img/sprites3.png';
 
-    // create_board_cells(num_rows, num_cols); // Create an array of Cells objects, each representing one cell in the simulation
     create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
-    console.log('testt  ', game_data.n_rows)
+
     canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
     canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
 
@@ -278,8 +282,6 @@ function new_game_client() {
     canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
     create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
     render_board(); // display the starting conditions for the sim
-  
-    //window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
 
 function get_player_color(owner){
@@ -292,7 +294,6 @@ function get_player_color(owner){
     };
 
     return neutral_entity_color; // if not found
-    
 }
 
 class CellClient {
@@ -326,8 +327,7 @@ class CellClient {
         }
         else {
             return CellClient.low_tide_color;
-        }
-
+        };
     }
 
     get_swamp_color() {
@@ -336,7 +336,7 @@ class CellClient {
         }
         else {
             return CellClient.swamp_color;
-        }
+        };
     }
 
     draw_cell() {
@@ -351,8 +351,6 @@ class CellClient {
         this.context.strokeRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
         
         if (this.visible) {
-
-
             if (this.terrain == TERRAIN_TYPE_MOUNTAIN) {
                 this.context.fillStyle = CellClient.mountain_color            
                 this.context.fillRect(this.col*CellClient.width, this.row*CellClient.height, CellClient.width, CellClient.height)
@@ -369,11 +367,9 @@ class CellClient {
                 // this.draw_outline();
                 this.context.fillStyle = get_player_color(this.owner)         
                 this.context.fillRect(this.col*CellClient.width+1, this.row*CellClient.height+1, CellClient.width-2, CellClient.height-2)
-                
             } 
 
             // this.draw_outline(water_color);
-            
             if (this.terrain != TERRAIN_TYPE_WATER) { 
                 this.draw_sprite(this.terrain);
             };
@@ -584,7 +580,7 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
 }
 
 function render_board() {    
-    console.log('render_board()')
+    //console.log('render_board()')
     context.fillStyle=CellClient.hidden_color  
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
@@ -599,7 +595,7 @@ function render_board() {
     // Draw arrows over each square containig one or more queued moves
     local_move_queue.forEach(move => {
         let id;
-        id = move.row * game_data.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
+        id = move.row * game_data.game.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
         cells_client[id].draw_arrow(move.dir, move.action);
     }); 
 
@@ -711,8 +707,7 @@ function select_cell_at(x, y) { // returns true if the active cell changed, and 
 
 function handle_key_press(key_key) {
     //If they user has pressed a movement key, then try to move the active cell
-    let dir, target_row, target_col;
-    
+    let target_row, target_col;
     if ((key_key == 'W' || key_key == 'w' || key_key == 'ArrowUp') && active_cell[0] > 0) {
         target_row = active_cell[0] - 1
         target_col = active_cell[1]
@@ -721,11 +716,11 @@ function handle_key_press(key_key) {
         target_row = active_cell[0]
         target_col = active_cell[1] - 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'left')
-    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game_data.n_rows - 1) { // down
+    } else if ((key_key == 'S' || key_key == 's' || key_key == 'ArrowDown') && active_cell[0] < game_data.game.n_rows - 1) { // down
         target_row = active_cell[0] + 1
         target_col = active_cell[1]
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'down')
-    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game_data.n_cols - 1) { // right
+    } else if ((key_key == 'D' || key_key == 'd' || key_key == 'ArrowRight') && active_cell[1] < game_data.game.n_cols - 1) { // right
         target_row = active_cell[0]
         target_col = active_cell[1] + 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'right')
@@ -741,19 +736,18 @@ function handle_key_press(key_key) {
 }
 
 function cancel_queue() { //undo all queued moves
-    server_receives_cancel_queue(local_player_id)
+    client_socket.emit('cancel_move_queue', local_player_id);
     local_move_queue.length = 0 // empty the queue list. Do not bother updating active cell location
     render_board();
 }
 
 function undo_queued_move() { //undo last queued move and return active cell to it
     if (local_move_queue.length > 0) {
-        let popped = local_move_queue.pop();
-        
+        let popped = local_move_queue.pop();        
         active_cell[0] = popped.row;
         active_cell[1] = popped.col;
-        
-        server_receives_undo_queued_move(local_player_id, popped.id)
+
+        client_socket.emit('undo_queued_move', local_player_id, popped.id) //, local_player_id, new_move)
 
         render_board();
     }
@@ -763,9 +757,12 @@ function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     local_queued_move_counter ++;
     let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
     //to do queuer: 0 assumes player is always player 0
-    server_receives_new_queued_moved(local_player_id, new_move)
-    local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
     
+    console.log('here')
+    client_socket.emit('queue_new_move', new_move) //, local_player_id, new_move)
+    // server_receives_new_queued_moved(local_player_id, new_move)
+    local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
+    // console.log(new_move)
     if (move_mode == ACTION_MOVE_HALF) {move_mode = ACTION_MOVE_NORMAL} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
 
     // Update the active/highlighted cell to match the new target
@@ -830,12 +827,12 @@ function toggle_pause() { //single player mode only.
 
 function client_receives_game_state_here(game_state_string) {
     game_state_data = JSON.parse(game_state_string);
-    
+    // console.log(game_state_data)
+
     if (cells_client.length > 0) {    
         //console.log('Attempting a new way of rendering')
         
         game_tick_local = game_state_data.game.turn // update the turn count
-        console.log(game_tick_local)
         // Update the board to contain only info the player should currently be able to see
         cells_client.forEach(cell => {
             cell.owner = null;

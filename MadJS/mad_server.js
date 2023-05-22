@@ -6,9 +6,6 @@ const path_finder = require("./path_finder");
 
 let game = null;
 
-
-
-
 ///////////
 // Shared constants
 ///////////
@@ -747,25 +744,6 @@ function init_server(game_data_json) {
 }
 
 
-
-function server_receives_new_queued_moved(player_id, new_move) {
-    game.players[player_id].queued_moves.push(new_move);
-}
-
-function server_receives_undo_queued_move(player_id, popped_item_id) {
-    // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
-    let not_caught_up = true;
-    while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
-        if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
-            game.players[player_id].queued_moves.pop();
-        } else { not_caught_up = false; }; //escape 
-    };
-}
-
-function server_receives_cancel_queue(player_id) {
-    game.players[player_id].queued_moves.length = 0;
-}
-
 function should_be_visible(cell, player_id, fog_of_war_distance) {
     if (!game.fog_of_war) {
         return true;
@@ -980,11 +958,30 @@ app.get('/', (req, res) => {
 
 io.on('connection', (socket) => {
     console.log('user connected');
-    'client_receives_game_state'
     game.send_game_state_to(0, 'client_connected')
     //socket.emit('client_connected', 'test')
-} );
 
+    socket.on('queue_new_move', (new_move) => {
+        //console.log('queue_new_move', new_move);
+        console.log('queue_new_move', new_move)
+        game.players[new_move.queuer].queued_moves.push(new_move);
+    } );
+
+    socket.on('undo_queued_move', (player_id, popped_item_id) => {
+        // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
+        let not_caught_up = true;
+        while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
+            if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
+                game.players[player_id].queued_moves.pop();
+            } else { not_caught_up = false; }; //escape 
+        };
+    } );
+
+    socket.on('cancel_move_queue', (player_id) => {
+        game.players[player_id].queued_moves.length = 0;
+    } );
+
+} );
 
 server.listen(3000, () => {
     console.log('Listening on *:3000');
@@ -995,14 +992,14 @@ server.listen(3000, () => {
         n_rows: 15,
         n_cols: 25,
         n_bots: 2,
-        fog_of_war: true
+        fog_of_war: false
     };
-    let game_data_string = JSON.stringify(starting_game_settings);
+    let game_data_string = JSON.stringify(starting_game_settings); //TODO socket.io says There is no need to run JSON.stringify() on objects as it will be done for you.
  //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
     init_server(game_data_string)
     
     setInterval(function(){
-        console.log('tick')
+        // console.log('tick')
 
         if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
             check_for_game_over();
@@ -1011,7 +1008,7 @@ server.listen(3000, () => {
         }
 
        // io.emit('news_by_server', 'testing');
-    }, 1000);
+    }, DEFAULT_TICK_SPEED);
 });
 
 
