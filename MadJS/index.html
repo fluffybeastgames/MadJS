@@ -113,7 +113,8 @@
 
             socket.on('client_connected', function(game_state_string){
                 console.log('client connected');
-                init_client(game_state_string, socket)
+                //init_client(game_state_string, socket)
+                init_client(socket)
             });
             
             socket.on('new_game_from_server', function(game_state_string) {

@@ -1,0 +1,42 @@
+<html>
+    <head>
+        <title>MadJS Lobby
+        </title>
+        <link rel="stylesheet" type="text/css" href="assets/mad.css" />
+
+    </head>
+
+    <body>
+        <div id="room_list_div" class="centered_div">
+            <h3>Rooms</h3>
+            <table style="border:2px solid green;">  
+                <thead>
+                  <tr>
+                    <th scope="col">Game Mode</th>
+                    <th scope="col">Players</th>
+                    <th scope="col">Bots</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Room ID (should be hidden)</th>
+                  </tr>
+                </thead>
+                <tbody id="room_list_body">
+                                                  
+                </tbody>
+                <tfoot>
+                    <tr><th scope="col">
+                        <button type="button" onclick="create_new_room()">New Room</button>
+                    </th></tr>
+                    
+                </tfoot>
+            </table>
+            
+
+        </div>
+        
+        <script src="./mad_lobby.js" type="text/javascript"></script>
+            
+        </script>
+    </body>
+
+</html>
+

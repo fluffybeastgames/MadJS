@@ -80,8 +80,12 @@ page_load_behavior() // define canvas and add event listeners
 
 function show_new_game_overlay() {
     // toggle_pause_server(false, false) // hard set to paused
-    client_socket.emit('toggle_pause_server', false, false)
-    
+    // console.log(game_data)
+
+    if(game_data) {
+        client_socket.emit('toggle_pause_server', game_data.game.game_id, false, false)
+    };
+
     document.getElementById('mad-overlay').style.display = 'block';
     new_game_overlay_visible = true;
 }
@@ -89,7 +93,9 @@ function hide_new_game_overlay() {
     document.getElementById('mad-overlay').style.display = 'none';
     new_game_overlay_visible = false;
     
-    client_socket.emit('toggle_pause_server', false, true) // hard set to unpaused
+    if(game_data) {
+        client_socket.emit('toggle_pause_server', game_data.game.game_id, false, true) // hard set to unpaused
+    };
 }
 
 function game_loop_client() {
@@ -118,7 +124,6 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_range.setAttribute('step', step)
     slider_range.value = starting_val;
     slider_range.addEventListener('change', function() {
-        console.log('I CHANGED A SLIDER')
         document.getElementById(`${id_prefix}_label`).innerHTML = `${slider_range.value}`;
     }, false);
 
@@ -238,7 +243,8 @@ function page_load_behavior(){
 
 
 //game init on server, event handlers on client side, canvas/context def on client
-function init_client(game_data_string, sock){
+//function init_client(game_data_string, sock){
+function init_client(sock){
     client_socket = sock;
     console.log('Initializing a Madmirals instance')
 
@@ -248,9 +254,9 @@ function init_client(game_data_string, sock){
     sprite_sheet.src = './img/sprites3.png';
     populate_new_game_overlay();
 
-    // console.log('initial game:', game_data.game.n_rows, game_data.game.n_cols)
-    new_game_client(game_data_string);
-    render_board(); // display the starting conditions for the sim
+    // // console.log('initial game:', game_data.game.n_rows, game_data.game.n_cols)
+    // new_game_client(game_data_string);
+    // render_board(); // display the starting conditions for the sim
     
     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 }
@@ -717,7 +723,7 @@ function handle_key_press(key_key) {
 }
 
 function cancel_queue() { //undo all queued moves
-    client_socket.emit('cancel_move_queue', local_player_id);
+    client_socket.emit('cancel_move_queue', game_data.game.game_id, local_player_id);
     local_move_queue.length = 0 // empty the queue list. Do not bother updating active cell location
     render_board();
 }
@@ -727,7 +733,7 @@ function undo_queued_move() { //undo last queued move and return active cell to 
         let popped = local_move_queue.pop();        
         active_cell[0] = popped.row;
         active_cell[1] = popped.col;
-        client_socket.emit('undo_queued_move', local_player_id, popped.id) //, local_player_id, new_move)
+        client_socket.emit('undo_queued_move', game_data.game.game_id, local_player_id, popped.id) //, local_player_id, new_move)
         render_board();
     }
 }
@@ -737,7 +743,7 @@ function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
     //to do queuer: 0 assumes player is always player 0
     
-    client_socket.emit('queue_new_move', new_move) //, local_player_id, new_move)
+    client_socket.emit('queue_new_move', game_data.game.game_id, new_move) //, local_player_id, new_move)
 
     local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
     // console.log(new_move)
@@ -796,7 +802,7 @@ function drag_canvas_event_handler(canvas_element) {
 
 function toggle_pause() { //single player mode only. 
     // console.log('attempting to toggle_pause')
-    client_socket.emit('toggle_pause_server', true, true);
+    client_socket.emit('toggle_pause_server', game_data.game.game_id, true, true);
 }
 
 function client_receives_game_state_here(game_state_string) {

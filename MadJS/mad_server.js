@@ -4,7 +4,7 @@ const path_finder = require("./path_finder");
 // const mad_common = require("./mad_common");
 // const c = require("./mad_constants");
 
-let game = null;
+let games = {};
 
 ///////////
 // Shared constants
@@ -45,22 +45,11 @@ const MIN_DISTANCE_ADMIRALS = 5;
 
 const DEFAULT_TICK_SPEED = 500;
 
-
-
-// function game_loop_server() {
-//     // console.log('tick')
-//     if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
-//         check_for_game_over();
-//         game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-//         game.send_game_state_to_players();
-//     }
-//     setTimeout( () => { window.requestAnimationFrame(() => game_loop_server()); }, game.tick_speed) // TODO THIS IS STILL CLIENT ONLY NEED TO ADOPT SEPARATE TIMER FOR NODE SIDE
-// }
-
 class Game {
     // game = new Game(n_rows, n_cols, fog_of_war, 1, human_player_info, num_bots, starting_troops, water_weight, mountain_weight, swamp_weight, ship_weight);
     
-    constructor(n_rows, n_cols, fog_of_war) {
+    constructor(game_id, n_rows, n_cols, fog_of_war) {
+        this.game_id = game_id; // a unique? reference to this particular game, or possibly to its underlying lobby
         this.players = []
         this.player_turn_order = []
         this.status = GAME_STATUS_INIT
@@ -81,20 +70,20 @@ class Game {
     add_human(session_id, name, color) {
         let new_id = this.players.length
         this.player_turn_order.push(new_id)
-        this.players.push(new HumanPlayer(new_id, session_id, name, color))
+        this.players.push(new HumanPlayer(this, new_id, session_id, name, color))
     }
 
     add_bot(personality, name, color) {
         let new_id = this.players.length
         this.player_turn_order.push(new_id)
-        this.players.push(new Bot(new_id, personality, name, color))
+        this.players.push(new Bot(this, new_id, personality, name, color))
     }
     
     initialize_cells() {
         let id = 0;
         for(let r = 0; r < this.num_rows; r++) {
             for(let c = 0; c < this.num_cols; c++) {
-                this.cells.push(new CellServer(id, r, c));
+                this.cells.push(new CellServer(this, id, r, c));
                 id++;;
             }
         }
@@ -381,6 +370,7 @@ class Game {
 
         // Start with header information about the game
         let game_string = '{ "game": {' +
+            `"game_id" : "${this.game_id}",` +
             `"state" : "${this.game_on}",` +
             `"turn": "${this.game_tick_server}",` +
             `"n_rows": "${this.num_rows}",` +
@@ -392,7 +382,7 @@ class Game {
         // Then loop through and add info about each visible cell
         let fog_of_war_distance = 1; // if 2 or greater, the player can see 2 blocks away from them instead of just 1
         this.cells.forEach(cell => {
-            if (should_be_visible(cell, player_id, fog_of_war_distance)) {
+            if (this.should_be_visible(cell, player_id, fog_of_war_distance)) {
                 let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
                 if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
                 if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
@@ -429,11 +419,94 @@ class Game {
         
     }
 
+            
+    should_be_visible(cell, player_id, fog_of_war_distance) {
+        if (!this.fog_of_war) {
+            return true;
+        // } else if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) { 
+        //     return true; 
+        } else if (cell.owner == player_id) { 
+            return true; 
+        
+        } else {
+            // let distance = 1
+            // if ([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
+            //     distance = 2;
+            // }
+            return (this.get_owned_neighbors(cell, player_id, fog_of_war_distance) > 0);
+        }
+    }
+    get_owned_neighbors(cell, player_id, fog_of_war_distance) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
+        let num_neighbors = 0;
+
+        let cells_to_check = [
+            [cell.row-1, cell.col-1],[cell.row-1, cell.col],[cell.row-1, cell.col+1],
+            [cell.row, cell.col-1],[cell.row, cell.col+1],
+            [cell.row+1, cell.col-1],[cell.row+1, cell.col],[cell.row+1, cell.col+1]];
+
+        if (fog_of_war_distance > 1) {
+            cells_to_check = cells_to_check.concat( 
+                [
+                    [cell.row-2, cell.col-2],[cell.row-2, cell.col-1],[cell.row-2, cell.col],[cell.row-2, cell.col+1],[cell.row-2, cell.col+2],
+                    [cell.row-1, cell.col-2],[cell.row-1, cell.col-1],[cell.row-1, cell.col],[cell.row-1, cell.col+1],[cell.row-1, cell.col+2],
+                    [cell.row, cell.col-2],[cell.row, cell.col-1],[cell.row, cell.col+1],[cell.row, cell.col+2],
+                    [cell.row+1, cell.col-2],[cell.row+1, cell.col-1],[cell.row+1, cell.col],[cell.row+1, cell.col+1],[cell.row+1, cell.col+2],
+                    [cell.row+2, cell.col-2],[cell.row+2, cell.col-1],[cell.row+2, cell.col],[cell.row+2, cell.col+1],[cell.row+2, cell.col+2],
+                ]
+            );
+        };
+
+        cells_to_check.forEach(cell => {
+            if(cell[0] >= 0 && cell[1] >= 0 && cell[0] < this.num_rows && cell[1] < this.num_cols) {
+                num_neighbors += (this.get_cell_by_coords(cell[0], cell[1]).owner == player_id) ? 1 : 0; 
+            };
+        });
+        return num_neighbors
+    }
+
+    get_cell_by_coords(row, col) { // Returns the server cell object at the given row and column
+        return this.cells[row*this.num_cols+col]
+    }
+
+    check_for_game_over() {
+        //if the game has been won, lost, or abandoned, mark it as such and alert the user
+
+        let troop_count = new Array(this.players.length).fill(0);
+        let admiral_count = new Array(this.players.length).fill(0);
+        this.cells.forEach(cell => {
+            if (cell.owner != null) {
+                troop_count[cell.owner] += cell.troops;
+                if (cell.entity == ENTITY_TYPE_ADMIRAL) { 
+                    admiral_count[cell.owner]++;
+                };            
+            }
+        });
+        
+        let remaining_humans_count = 0; // make sure at least 1 human player is still in the game
+        let remaining_bots_count = 0; // make sure at least 1 human player is still in the game
+        for (let i = 0; i < admiral_count.length; i++) {
+            if (admiral_count[i] > 0 && this.players[i].is_human) {
+                remaining_humans_count++;
+            } else if (admiral_count[i] > 0 && !this.players[i].is_human) {
+                remaining_bots_count++;
+            };
+        };
+
+        if (remaining_humans_count == 0) {
+            this.game_on = false;
+            console.log('Game over! Humans lose.'); // TODO pass this info on to the client
+        } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
+            this.game_on = false;
+            console.log(`Game over! Player wins!!!`); // TODO pass this info on to the client
+        };
+    }
+
 }
 
 
 class CellServer {
-    constructor(id, row, col) {
+    constructor(parent, id, row, col) {
+        this.parent = parent // the game object that this belongs to
         this.id = id //position w/in the 1d array of cells
         this.row = row;
         this.col = col;
@@ -445,13 +518,13 @@ class CellServer {
 
     neighbor(dir) { //returns the neighboring cell. If out of bounds, returns null
         if(dir=='left' && this.col>0) { 
-            return game.cells[this.id-1]
-        } else if (dir=='right' && this.col < game.num_cols - 1) { 
-            return game.cells[this.id+1]
+            return this.parent.cells[this.id-1]
+        } else if (dir=='right' && this.col < this.parent.num_cols - 1) { 
+            return this.parent.cells[this.id+1]
         } else if (dir=='up' && this.row>0) { 
-            return game.cells[this.id - game.num_cols]
-        } else if (dir=='down' && this.row < game.num_rows - 1) { 
-            return game.cells[this.id + game.num_cols]
+            return this.parent.cells[this.id - this.parent.num_cols]
+        } else if (dir=='down' && this.row < this.parent.num_rows - 1) { 
+            return this.parent.cells[this.id + this.parent.num_cols]
         } else {
             return null;
         }
@@ -461,19 +534,21 @@ class CellServer {
 }
 
 class HumanPlayer {
-    constructor(uid, session_id, name, color) {
+    constructor(parent, uid, session_id, name, color) {
+        this.parent = parent; // the game object that owns this player
         this.uid = uid; // 0-n, may be unecessary as we can use the position in Players[] as the uid
         this.display_name = name;
         this.session_id = session_id; // the session ID of the connected player
         this.color = color; //temp. green
         this.queued_moves = [];
         this.is_human = true;
-        this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
+        this.active = true; // true if they're still in the game
+    
     }
     
     admiral_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid && cell.entity == ENTITY_TYPE_ADMIRAL) {counter ++} 
         });
         return counter
@@ -481,7 +556,7 @@ class HumanPlayer {
 
     troop_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid) {counter += cell.troops} 
         });
         return counter
@@ -489,7 +564,7 @@ class HumanPlayer {
 
     cell_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid) {counter ++} 
         });
         return counter
@@ -497,7 +572,7 @@ class HumanPlayer {
 
     ship_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid && [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3,ENTITY_TYPE_SHIP_4].includes(cell.entity)) {counter ++} 
         });
         return counter
@@ -506,19 +581,20 @@ class HumanPlayer {
 }
 
 class Bot {
-    constructor(uid, personality, name, color) {
+    constructor(parent, uid, personality, name, color) {
+        this.parent = parent; // the game object that owns this player
         this.uid = uid;
         this.display_name = name;
         this.personality = personality;
         this.color = color;
         this.queued_moves = []
         this.is_human = false;
-        this.active = true; // if active, still in the game. if not, keep in the scoreboard but ignore during gameplay
+        this.active = true; // if active, still in the game; if not, keep in the scoreboard but ignore during gameplay
     }
 
     admiral_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid && cell.entity == ENTITY_TYPE_ADMIRAL) {counter ++} 
         });
         return counter
@@ -526,7 +602,7 @@ class Bot {
 
     troop_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid) {counter += cell.troops} 
         });
         return counter
@@ -534,7 +610,7 @@ class Bot {
 
     cell_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid) {counter ++} 
         });
         return counter
@@ -542,7 +618,7 @@ class Bot {
     
     ship_count() {
         let counter = 0;
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if (cell.owner == this.uid && [ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3,ENTITY_TYPE_SHIP_4].includes(cell.entity)) {counter ++} 
         });
         return counter
@@ -568,7 +644,7 @@ class Bot {
         let potential_targets = []; // which entity should we send troops to?
         let potential_origins = []; // where to start gathering troops
 
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if(cell.owner != this.uid) {
                 switch (cell.entity) {
                     case ENTITY_TYPE_ADMIRAL: potential_targets.push({'address':[cell.row, cell.col], 'weight':100}); break;
@@ -590,7 +666,7 @@ class Bot {
             // console.log(target_address.address, target_address.weight)
 
             if (origin_address && target_address) {
-                let path = game.astar.find_path(origin_address.address, target_address.address);
+                let path = this.parent.astar.find_path(origin_address.address, target_address.address);
                 if (path) {
                     for (let i = 0; i < path.length - 1; i++) {
                         let new_move = {'id':-1, 'row':path[i][0], 'col':path[i][1], 'dir':'n/a',
@@ -610,7 +686,7 @@ class Bot {
         let potential_targets = []; // which entity should we send troops to?
         let potential_origins = []; // where to start gathering troops
 
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if(cell.owner == this.uid) {
                 switch (cell.entity) {
                     case ENTITY_TYPE_ADMIRAL: potential_targets.push({'address':[cell.row, cell.col], 'weight':100}); break;
@@ -628,13 +704,13 @@ class Bot {
             let target_address = weighted_choice(potential_targets);
 
             if (origin_address && target_address) {
-                let path = game.astar.find_path(origin_address, target_address);
+                let path = this.parent.astar.find_path(origin_address, target_address);
                 if (path) {
                     path.forEach(cell => {
                         let new_move = {'id':-1, 'row':cell.address[0], 'col':cell.address[1], 'dir':'n/a',
                                         'queuer':this.uid,'target_row':target_address.address[0], 'target_col':target_address.address[1], 
                                         'action':ACTION_MOVE_NORMAL}
-                        game.players[this.uid].queued_moves.push(new_move);
+                        this.parent.players[this.uid].queued_moves.push(new_move);
                     })
                 };
             };
@@ -673,11 +749,11 @@ class Bot {
         
         let potential_moves = [];
         let neighbor_left, neighbor_right, neighbor_up, neighbor_down, weight;
-        let troop_count = game.players[this.uid].troop_count();
+        let troop_count = this.parent.players[this.uid].troop_count();
 
         let pm_id = 0; // a counter
 
-        game.cells.forEach(cell => {
+        this.parent.cells.forEach(cell => {
             if(cell.owner == this.uid) {
                 neighbor_left = cell.neighbor('left');
                 neighbor_right = cell.neighbor('right');
@@ -723,7 +799,7 @@ class Bot {
                     
                     let new_move = {'id':-1, 'row':row, 'col':col, 'dir':result.dir, 
                                     'queuer':this.uid,'target_row':target_row, 'target_col':target_col, 'action':result.move_mode}
-                    game.players[this.uid].queued_moves.push(new_move);
+                    this.parent.players[this.uid].queued_moves.push(new_move);
 
                     //console.log(`tick: ${game_tick_server} move_id: ${result.id};  ${row}x${col} ${result.dir} to ${target_row}x${target_col}, queue: ${this.queued_moves.length}, winning weight ${result.weight} `)
 
@@ -735,35 +811,17 @@ class Bot {
     };
 }
 
-//if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
-function init_server(game_data_json) {
-    request_new_game(game_data_json) // server side initiation process for a new game
-    
-    //new_game_from_server
-    // game.send_game_state_to_players();
-    // game_loop_server()
-}
-
-
-function should_be_visible(cell, player_id, fog_of_war_distance) {
-    if (!game.fog_of_war) {
-        return true;
-    // } else if (cell.owner == player_id || cell.terrain == TERRAIN_TYPE_MOUNTAIN) { 
-    //     return true; 
-    } else if (cell.owner == player_id) { 
-        return true; 
-    
-    } else {
-        // let distance = 1
-        // if ([ENTITY_TYPE_SHIP, ENTITY_TYPE_SHIP_2, ENTITY_TYPE_SHIP_3, ENTITY_TYPE_SHIP_4].includes(cell.entity)) {
-        //     distance = 2;
-        // }
-        return (get_owned_neighbors(cell, player_id, fog_of_war_distance) > 0);
-    }
-}
+// //if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
+// function init_server(game_data_json) {
+//     request_new_game(game_data_json); // server side initiation process for a new game
+// }
 
 function request_new_game(game_data_json) {
+    console.log('i am request_new_game')
     let game_data = JSON.parse(game_data_json)
+
+    let new_game_id = Math.floor(Math.random()*10**16); // TODO possibly temp - make into the room id of the lobby that created this game?
+
 
     // For each possible game setting, use the json input value, if present, and default to random/default values
     let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
@@ -785,10 +843,11 @@ function request_new_game(game_data_json) {
                                 'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
 
     
-    game = new Game(n_rows, n_cols, fog_of_war);
+    // games.push(new Game(n_rows, n_cols, fog_of_war);)
+    let new_g = new Game(new_game_id, n_rows, n_cols, fog_of_war);
     
     let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
-    game.add_human('12345678', player_name, '#0a5a07');
+    new_g.add_human('12345678', player_name, '#0a5a07');
 
     for (let i = 0; i < n_bots; i++) {
         let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
@@ -799,84 +858,23 @@ function request_new_game(game_data_json) {
         let bot_name = bot_name_options[bot_name_index];
         bot_name_options.splice(bot_name_index, 1);
 
-        game.add_bot('bot personality', bot_name, bot_color);
-
+        new_g.add_bot('bot personality', bot_name, bot_color);
     };
 
-    game.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
-    game.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+    new_g.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+    new_g.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
-    game.status = GAME_STATUS_IN_PROGRESS
-    game.game_on = true; // start with the simulation running instead of paused
+    new_g.status = GAME_STATUS_IN_PROGRESS;
+    new_g.game_on = true; // start with the simulation running instead of paused
 
-    game.send_game_state_to(0, 'new_game_from_server');
+    new_g.send_game_state_to(0, 'new_game_from_server');
+    games[new_game_id] = new_g; // add game to the list of active games
+
+    console.log('i was request_new_game. new game id: ', new_game_id)
 }
 
 
-function get_owned_neighbors(cell, player_id, fog_of_war_distance) { // Returns the number of adjacent cells owned by the provided player_id. Normally, this is used to determine if a cell should be visible to said user
-    let num_neighbors = 0;
 
-    let cells_to_check = [
-        [cell.row-1, cell.col-1],[cell.row-1, cell.col],[cell.row-1, cell.col+1],
-        [cell.row, cell.col-1],[cell.row, cell.col+1],
-        [cell.row+1, cell.col-1],[cell.row+1, cell.col],[cell.row+1, cell.col+1]];
-
-    if (fog_of_war_distance > 1) {
-        cells_to_check = cells_to_check.concat( 
-            [
-                [cell.row-2, cell.col-2],[cell.row-2, cell.col-1],[cell.row-2, cell.col],[cell.row-2, cell.col+1],[cell.row-2, cell.col+2],
-                [cell.row-1, cell.col-2],[cell.row-1, cell.col-1],[cell.row-1, cell.col],[cell.row-1, cell.col+1],[cell.row-1, cell.col+2],
-                [cell.row, cell.col-2],[cell.row, cell.col-1],[cell.row, cell.col+1],[cell.row, cell.col+2],
-                [cell.row+1, cell.col-2],[cell.row+1, cell.col-1],[cell.row+1, cell.col],[cell.row+1, cell.col+1],[cell.row+1, cell.col+2],
-                [cell.row+2, cell.col-2],[cell.row+2, cell.col-1],[cell.row+2, cell.col],[cell.row+2, cell.col+1],[cell.row+2, cell.col+2],
-            ]
-        );
-    };
-
-    cells_to_check.forEach(cell => {
-        if(cell[0] >= 0 && cell[1] >= 0 && cell[0] < game.num_rows && cell[1] < game.num_cols) {
-            num_neighbors += (get_cell_by_coords(cell[0], cell[1]).owner == player_id) ? 1 : 0; 
-        };
-    });
-    return num_neighbors
-}
-
-function get_cell_by_coords(row, col) { // Returns the server cell object at the given row and column
-    return game.cells[row*game.num_cols+col]
-}
-
-function check_for_game_over() {
-    //if the game has been won, lost, or abandoned, mark it as such and alert the user
-
-    let troop_count = new Array(game.players.length).fill(0);
-    let admiral_count = new Array(game.players.length).fill(0);
-    game.cells.forEach(cell => {
-        if (cell.owner != null) {
-            troop_count[cell.owner] += cell.troops;
-            if (cell.entity == ENTITY_TYPE_ADMIRAL) { 
-                admiral_count[cell.owner]++;
-            };            
-        }
-    });
-    
-    let remaining_humans_count = 0; // make sure at least 1 human player is still in the game
-    let remaining_bots_count = 0; // make sure at least 1 human player is still in the game
-    for (let i = 0; i < admiral_count.length; i++) {
-        if (admiral_count[i] > 0 && game.players[i].is_human) {
-            remaining_humans_count++;
-        } else if (admiral_count[i] > 0 && !game.players[i].is_human) {
-            remaining_bots_count++;
-        };
-    };
-
-    if (remaining_humans_count == 0) {
-        game.game_on = false;
-        console.log('Game over! Humans lose.'); // TODO pass this info on to the client
-    } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
-        game.game_on = false;
-        console.log(`Game over! Player wins!!!`); // TODO pass this info on to the client
-    };
-}
 
 function weighted_choice(arr_options) {
 //Given an array of objects containing a key 'weight' containing a non-negative number. The bigger the number, the more likely it is to be picked
@@ -936,26 +934,37 @@ app.get('/', (req, res) => {
 
 io.on('connection', (socket) => {
     console.log(`user ${socket.id} connected`);
-    game.send_game_state_to(0, 'client_connected')
-    //socket.emit('client_connected', 'test')
 
-    socket.on('queue_new_move', (new_move) => {
+    socket.join('global_lobby');
+    //socket.join('game_0000000001');
+
+    // let starting_game_settings =  {
+    //     n_rows: 15,
+    //     n_cols: 25,
+    //     n_bots: 2,
+    //     fog_of_war: false
+    // };
+    // request_new_game(starting_game_settings);
+
+    socket.emit('client_connected')
+
+    socket.on('queue_new_move', (game_id, new_move) => {
         //console.log('queue_new_move', new_move);
-        game.players[new_move.queuer].queued_moves.push(new_move);
+        games[game_id].players[new_move.queuer].queued_moves.push(new_move);
     } );
 
-    socket.on('undo_queued_move', (player_id, popped_item_id) => {
+    socket.on('undo_queued_move', (game_id, player_id, popped_item_id) => {
         // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
         let not_caught_up = true;
-        while (game.players[player_id].queued_moves.length>0 && not_caught_up) {
-            if (game.players[player_id].queued_moves[game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
-                game.players[player_id].queued_moves.pop();
+        while (games[game_id].players[player_id].queued_moves.length>0 && not_caught_up) {
+            if (games[game_id].players[player_id].queued_moves[games[game_id].players[player_id].queued_moves.length - 1].id >= popped_item_id) {
+                games[game_id].players[player_id].queued_moves.pop();
             } else { not_caught_up = false; }; //escape 
         };
     } );
 
-    socket.on('cancel_move_queue', (player_id) => {
-        game.players[player_id].queued_moves.length = 0;
+    socket.on('cancel_move_queue', (game_id, player_id) => {
+        games[game_id].players[player_id].queued_moves.length = 0;
     } );
 
     socket.on('request_new_game', (game_data_json) => {
@@ -964,50 +973,82 @@ io.on('connection', (socket) => {
         request_new_game(game_data_json);
     } );
 
-    socket.on('toggle_pause_server', (toggle, override) => {
-        if (toggle) {
-            console.log('Toggling pause to', game.game_on)
-            game.game_on = ! game.game_on
-        }
-        else {
-            console.log('Setting pause to', ! override)
-            game.game_on = override
-        }    
-    
-        io.emit('toggle_pause_received', game.game_on)
+    socket.on('toggle_pause_server', (game_id, toggle, override) => {
+        if (game_id) {
+            if (toggle) {
+                console.log('Toggling pause to', games[game_id].game_on, 'game:', game_id)
+                games[game_id].game_on = ! games[game_id].game_on
+            }
+            else {
+                console.log('Setting pause to', ! override, 'game:', game_id)
+                games[game_id].game_on = override
+            }    
+        
+            io.emit('toggle_pause_received', games[game_id].game_on);
+        };
+
     });
 
     socket.on('disconnect', () => {
         console.log(`user ${socket.id} disconnected`);
     });
-    
-
-
 } );
+
+io.of("/").adapter.on("create-room", (room) => {
+    console.log(`room ${room} was created`);
+  });
+
+io.of("/").adapter.on("join-room", (room, id) => {
+console.log(`socket ${id} has joined room ${room}`);
+});
 
 server.listen(3000, () => {
     console.log('Listening on *:3000');
 
     let start_time = Date.now()
 
-    let starting_game_settings =  {
-        n_rows: 15,
-        n_cols: 25,
-        n_bots: 2,
-        fog_of_war: false
-    };
-    let game_data_string = JSON.stringify(starting_game_settings); //TODO socket.io says There is no need to run JSON.stringify() on objects as it will be done for you.
+    // let starting_game_settings =  {
+    //     n_rows: 15,
+    //     n_cols: 25,
+    //     n_bots: 2,
+    //     fog_of_war: false
+    // };
+    // let game_data_string = JSON.stringify(starting_game_settings); //TODO socket.io says There is no need to run JSON.stringify() on objects as it will be done for you.
  //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
-    init_server(game_data_string)
+    // init_server(game_data_string)
     
-    setInterval(function(){
-        // console.log('tick')
-
-        if (game.status == GAME_STATUS_IN_PROGRESS && game.game_on) {
-            check_for_game_over();
-            game.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-            game.send_game_state_to_players();
+    setInterval(function(){ 
+    // This controls the game loop. Each active game advances one tick each time this interval passes
+        
+        let keys = Object.keys(games);
+        console.log(keys);
+        for (let i = 0; i < keys.length; i++) {
+            let g = games[keys[i]];
+            console.log(`Game ${i} - id:${g.game_id}, Size: ${g.num_rows} x ${g.num_cols} - tick ${g.game_tick_server}, status/game on: ${g.status}, ${g.game_on}`);
+            
+            if (g.status == GAME_STATUS_IN_PROGRESS && g.game_on) {
+                console.log('tick - ', g.game_id, g.game_tick_server)
+                g.check_for_game_over(); //todo
+                g.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+                g.send_game_state_to_players();
+            };
+            
         }
+
+        // for (let key in Object.keys(games)) {
+        //     g = games[key]
+        // // games.forEach(g => {
+        //     console.log('tick check - g status and game_on:', g.status, g.game_on)
+        //     console.log(g)
+            
+        //     if (g.status == GAME_STATUS_IN_PROGRESS && g.game_on) {
+        //         console.log('tick - ', g.game_id, g.game_tick_server)
+        //         g.check_for_game_over(); //todo
+        //         g.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+        //         g.send_game_state_to_players();
+        //     };
+        // // });
+        // };
 
        // io.emit('news_by_server', 'testing');
     }, DEFAULT_TICK_SPEED);
