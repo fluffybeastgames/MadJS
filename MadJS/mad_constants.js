@@ -1,4 +1,3 @@
-
 // ///////////
 // // Shared constants
 // ///////////
@@ -21,7 +20,6 @@
 // const ACTION_MOVE_ALL = 3;
 // const ACTION_MOVE_CITY = 4;
 // const ACTION_MOVE_NONE = 5;
-
 
 // const GAME_MODE_FFA = 1;
 // const GAME_MODE_FFA_CUST = 2;
