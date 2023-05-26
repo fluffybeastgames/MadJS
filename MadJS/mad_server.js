@@ -410,15 +410,79 @@ class Game {
     }
   }
 
+
+  getFather(conn, curPoint) {
+    while (conn[curPoint] !== curPoint) {
+      conn[curPoint] = conn[conn[curPoint]]
+      curPoint = conn[curPoint]
+    }
+    return curPoint
+  }
+
+  isObstacle(cell) { return cell.terrain === TERRAIN_TYPE_MOUNTAIN }
+
+  withinMap(x, y) {
+    return 0 <= x && x < this.num_rows && 0 <= y && y < this.num_cols;
+  }
+
+  checkConnection(obstacleCount) {
+    const conn = new Array(this.num_rows * this.num_cols).fill().map((_, i) => i);
+    const size = new Array(this.num_rows * this.num_cols).fill(1);
+    let connected = false;
+
+    for (let i = 0; i < this.num_rows; i++) {
+      for (let j = 0; j < this.num_cols; j++) {
+        const cell_id = i * this.num_cols + j;
+        if (!this.isObstacle(this.cells[cell_id])) {
+          const curPoint = i * this.num_cols + j;
+          const neighbors = [
+            { x: i - 1, y: j },
+            { x: i, y: j - 1 }
+          ];
+          for (const neighbor of neighbors) {
+            const { x, y } = neighbor;
+            const neighbor_id = x * this.num_cols + y;
+            if (this.withinMap(x, y) && !this.isObstacle(this.cells[neighbor_id])) {
+              const lastPoint = x * this.num_cols + y;
+              const curFather = this.getFather(conn, curPoint);
+              const lastFather = this.getFather(conn, lastPoint);
+              if (curFather !== lastFather) {
+                if (size[lastFather] > size[curFather]) {
+                  conn[curFather] = lastFather;
+                  size[lastFather] += size[curFather];
+                } else {
+                  conn[lastFather] = curFather;
+                  size[curFather] += size[lastFather];
+                }
+              }
+            }
+          }
+        }
+        if (size[this.getFather(conn, i * this.num_cols + j)] >= this.num_rows * this.num_cols - obstacleCount) {
+          connected = true;
+          break;
+        }
+      }
+      if (connected) {
+        break;
+      }
+    }
+
+    return connected;
+  }
+
   spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight) {
+    let mountainCount = 1;
+
     let arr_options = [
       { value: TERRAIN_TYPE_WATER, weight: water_weight },
       { value: TERRAIN_TYPE_MOUNTAIN, weight: mountain_weight },
       { value: TERRAIN_TYPE_SWAMP, weight: swamp_weight },
       { value: ENTITY_TYPE_SHIP, weight: ship_weight },
     ];
-    this.cells.forEach((cell) => {
-      // console.log(cell.id, cell.row, cell.col)
+
+    for (let i = 0; i < this.cells.length; i++) {
+      let cell = this.cells[i];
       if (cell.owner == null) {
         let result = weighted_choice(arr_options).value;
         if (result == ENTITY_TYPE_SHIP) {
@@ -426,15 +490,22 @@ class Game {
           cell.entity = result;
           cell.troops = Math.floor(Math.random() * 30) + 12;
         } else if (result == TERRAIN_TYPE_MOUNTAIN) {
-          this.astar_board.cells[cell.id].traversable = false;
-          cell.terrain = result; //TODO add check if this is a block
+          this.cells[i].terrain = result;
+          if (!this.checkConnection(mountainCount)) {
+            this.cells[i].terrain = TERRAIN_TYPE_WATER;
+          } else {
+            this.astar_board.cells[cell.id].traversable = false;
+            mountainCount += 1;
+          }
+
         } else {
           cell.terrain = result;
         }
-        // this.astar.print_board([0,0], [1,1]);
       }
-    });
+    }
   }
+
+
 
   //An attempt at predicting what the server to client communication will look like
   send_game_state_to_players() {
@@ -510,13 +581,12 @@ class Game {
     game_string += '], "scoreboard":[  '; // close the board loop and start adding the scoreboard
 
     for (let i = 0; i < this.players.length; i++) {
-      game_string += `{"id":"${i}", "display_name": "${
-        this.players[i].display_name
-      }", "troops": ${this.players[i].troop_count()}, "ships": ${this.players[
-        i
-      ].ship_count()}, "admirals": ${this.players[
-        i
-      ].admiral_count()}, "color": "${this.players[i].color}" }, `;
+      game_string += `{"id":"${i}", "display_name": "${this.players[i].display_name
+        }", "troops": ${this.players[i].troop_count()}, "ships": ${this.players[
+          i
+        ].ship_count()}, "admirals": ${this.players[
+          i
+        ].admiral_count()}, "color": "${this.players[i].color}" }, `;
     }
 
     game_string = game_string.slice(0, -2); // remove the last two characters from the string - always a trailing ', ' since there's always going to be 1+ players
