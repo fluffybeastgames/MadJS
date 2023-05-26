@@ -411,7 +411,7 @@ class Game {
   }
 
 
-  getFather(conn, curPoint) {
+  get_parent_node(conn, curPoint) { // used in map_is_fully_connected
     while (conn[curPoint] !== curPoint) {
       conn[curPoint] = conn[conn[curPoint]]
       curPoint = conn[curPoint]
@@ -419,21 +419,21 @@ class Game {
     return curPoint
   }
 
-  isObstacle(cell) { return cell.terrain === TERRAIN_TYPE_MOUNTAIN }
+  cell_is_obstacle(cell) { return cell.terrain === TERRAIN_TYPE_MOUNTAIN } // this may grow to include other terrain features (cracked and broken mountains, land, ...)
 
-  withinMap(x, y) {
+  within_map(x, y) { // Returns true if the cell is in bounds
     return 0 <= x && x < this.num_rows && 0 <= y && y < this.num_cols;
   }
 
-  checkConnection(obstacleCount) {
+  map_is_fully_connected(obstacleCount) {
+    // An implementation of a disjoint set union, allowing us to very quickly check whether or not the entire map is traversable
     const conn = new Array(this.num_rows * this.num_cols).fill().map((_, i) => i);
     const size = new Array(this.num_rows * this.num_cols).fill(1);
-    let connected = false;
 
     for (let i = 0; i < this.num_rows; i++) {
       for (let j = 0; j < this.num_cols; j++) {
         const cell_id = i * this.num_cols + j;
-        if (!this.isObstacle(this.cells[cell_id])) {
+        if (!this.cell_is_obstacle(this.cells[cell_id])) {
           const curPoint = i * this.num_cols + j;
           const neighbors = [
             { x: i - 1, y: j },
@@ -442,37 +442,33 @@ class Game {
           for (const neighbor of neighbors) {
             const { x, y } = neighbor;
             const neighbor_id = x * this.num_cols + y;
-            if (this.withinMap(x, y) && !this.isObstacle(this.cells[neighbor_id])) {
+            if (this.within_map(x, y) && !this.cell_is_obstacle(this.cells[neighbor_id])) { //if the neighbor is in bounds and is not a mountain
               const lastPoint = x * this.num_cols + y;
-              const curFather = this.getFather(conn, curPoint);
-              const lastFather = this.getFather(conn, lastPoint);
-              if (curFather !== lastFather) {
-                if (size[lastFather] > size[curFather]) {
-                  conn[curFather] = lastFather;
-                  size[lastFather] += size[curFather];
+              const curParent = this.get_parent_node(conn, curPoint);
+              const lastParent = this.get_parent_node(conn, lastPoint);
+              if (curParent !== lastParent) {
+                if (size[lastParent] > size[curParent]) {
+                  conn[curParent] = lastParent;
+                  size[lastParent] += size[curParent];
                 } else {
-                  conn[lastFather] = curFather;
-                  size[curFather] += size[lastFather];
+                  conn[lastParent] = curParent;
+                  size[curParent] += size[lastParent];
                 }
               }
             }
           }
         }
-        if (size[this.getFather(conn, i * this.num_cols + j)] >= this.num_rows * this.num_cols - obstacleCount) {
-          connected = true;
-          break;
+        if (size[this.get_parent_node(conn, i * this.num_cols + j)] >= this.num_rows * this.num_cols - obstacleCount) {
+            return true; // all non-obstacle cells are connected in a single union
         }
-      }
-      if (connected) {
-        break;
       }
     }
 
-    return connected;
+    return false; // failed to converge on a single traversable union
   }
 
   spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight) {
-    let mountainCount = 1;
+    let num_mountains = 1;
 
     let arr_options = [
       { value: TERRAIN_TYPE_WATER, weight: water_weight },
@@ -490,12 +486,12 @@ class Game {
           cell.entity = result;
           cell.troops = Math.floor(Math.random() * 30) + 12;
         } else if (result == TERRAIN_TYPE_MOUNTAIN) {
-          this.cells[i].terrain = result;
-          if (!this.checkConnection(mountainCount)) {
-            this.cells[i].terrain = TERRAIN_TYPE_WATER;
+          cell.terrain = result; // tentatively set it to mountain
+          if (!this.map_is_fully_connected(num_mountains)) { // if this would create an impasse, remove the mountain
+            cell.terrain = TERRAIN_TYPE_WATER;
           } else {
             this.astar_board.cells[cell.id].traversable = false;
-            mountainCount += 1;
+            num_mountains += 1;
           }
 
         } else {
