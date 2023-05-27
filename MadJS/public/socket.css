@@ -1,0 +1,39 @@
+
+#mad-chat-div {
+    position: fixed;
+    display: block;
+    bottom: 0;
+    right: 0;
+    margin: 10;
+    padding: 20;
+    outline: thick solid #882288;
+  }
+
+
+#mad-lobby-div {
+    display: block;
+    margin: 10;
+    padding: 20;    
+    outline: thick solid #222288;
+}
+
+#mad-waiting-room-div {
+    display: block;
+    margin: 10;
+    padding: 20;    
+    outline: thick solid #228822;
+}
+
+#mad-game-div {
+    display: block;
+    margin: 10;
+    padding: 20;    
+    outline: thick solid #882222;
+}
+
+
+#table-lobby {
+    outline: thick solid #BBBB22;
+    margin: 10;
+    padding: 20;    
+}
