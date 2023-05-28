@@ -82,15 +82,16 @@ function show_new_game_overlay() {
     // toggle_pause_server(false, false) // hard set to paused
     // console.log(game_data)
 
+
     if(game_data) {
         client_socket.emit('toggle_pause_server', game_data.game.game_id, false, false)
     };
 
-    document.getElementById('mad-overlay').style.display = 'block';
+    document.getElementById('mad-game-settings').style.display = 'block';
     new_game_overlay_visible = true;
 }
 function hide_new_game_overlay() {
-    document.getElementById('mad-overlay').style.display = 'none';
+    document.getElementById('mad-game-settings').style.display = 'none';
     new_game_overlay_visible = false;
     
     if(game_data) {
@@ -133,16 +134,47 @@ function add_slider(overlay_inner, id_prefix, display_name, min, max, step, star
     slider_div.appendChild(lbl_slider_val);
 }
 
+function populate_room_overlay() {
+    let overlay = document.getElementById('mad-lobby');
+
+    // let room_table = document.createElement('table');
+    // let table_head = document.createElement('thead');
+    // let table_r = document.createElement('tr');
+    // let th_game_mode = document.createElement('th');
+    // let th_players = document.createElement('th');
+    // let th_bots = document.createElement('th');
+    // let th_room_id = document.createElement('th');
+    // th_game_mode.scope = 'col'
+    // th_players.scope = 'col'
+    // th_bots.scope = 'col'
+    // th_room_id.scope = 'col'
+
+
+    
+
+
+    // <thead>
+    //               <tr>
+    //                 <th scope="col">Game Mode</th>
+    //                 <th scope="col">Players</th>
+    //                 <th scope="col">Bots</th>
+    //                 <th scope="col">Status</th>
+    //                 <th scope="col">Room ID (should be hidden)</th>
+    //               </tr>
+    // room_table.appendChild()
+
+
+}
 function populate_new_game_overlay(){
-    let overlay = document.getElementById('mad-overlay');
+    let overlay = document.getElementById('mad-game-settings');
     
     let overlay_container_box = document.createElement('div');
-    overlay_container_box.id = 'mad-overlay-container';
+    overlay_container_box.id = 'mad-game-settings-container';
     overlay_container_box.addEventListener('click', function(e) { e.stopPropagation(); }); // prevent clicking on the new game box from closing the overlay
     overlay.appendChild(overlay_container_box)
     
     let overlay_inner = document.createElement('div');
-    overlay_inner.id = 'mad-overlay-inner';
+    overlay_inner.id = 'mad-game-settings-inner';
     overlay_container_box.appendChild(overlay_inner)
     
     let input_name = document.createElement('input');
@@ -202,7 +234,7 @@ function populate_new_game_overlay(){
        
 }
 
-function launch_new_game(event) { //TODO THIS MUST BE REFACTORED 
+function launch_new_game(event) { 
     console.log('launch new game!')
     
     let game_data = {
@@ -554,7 +586,7 @@ class CellClient {
 };
 
 function create_client_cells(n_rows, n_cols) { // in the future this will only be defined on the client side
-    // console.log('creating client cell grid', n_rows, n_cols)
+    console.log('creating client cell grid', n_rows, n_cols)
     cells_client = []; // reset the array of cells, in case this isn't first game of session
 
     let id = 0;
@@ -806,6 +838,7 @@ function toggle_pause() { //single player mode only.
 }
 
 function client_receives_game_state_here(game_state_string) {
+    // console.log(game_state_string)
     game_state_data = JSON.parse(game_state_string);
     // console.log(game_state_data)
 

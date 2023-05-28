@@ -23,13 +23,21 @@ socket_local.on('client_joined_room', function(room_id) {
 
     document.getElementById('waiting_room_id').innerHTML = `Room: ${room_id}`
     
+    // Number of players in room
+    // Number of players ready
+    // Who host is
+    // Table w/ list of players and their colors and their ready status, and a star next to the host
+    // Table w/ list of bots? or just a dropdown or slider or to select number of bots?
+    // Game input controls - visible to all players, only editable by host, with shuffle button to randomize
 
     switch_to_waiting_room_gui()
 
 });
 
-socket_local.on('lobby_room_info', function(list_rooms) {
-    // console.log('lobby_room_info', list_rooms)
+socket_local.on('lobby_info', function(list_rooms, players_in_lobby, players_online) {
+    document.getElementById('players_online').innerHTML = `Players Online: ${players_online}`
+    
+    
     let lobby_table = document.getElementById('table-lobby');
 
     // var myTable = document.getElementById('myTable');
@@ -126,7 +134,21 @@ function get_selected_room() {
 
 
 function populate_gui() {  
+    function get_news_div() {
+        let div = document.createElement('div');
+        div.id = 'mad-news-div';
 
+        let p_news = document.createElement('p')
+        p_news.innerHTML = 'News Feed'
+
+        let p_players = document.createElement('p')
+        p_players.innerHTML = 'Players Online: 0'
+        p_players.id = 'players_online'
+        div.appendChild(p_news);
+        div.appendChild(p_players);
+
+        return div;
+    }
     function get_lobby_div() {
         let div = document.createElement('div');
         div.id = 'mad-lobby-div'
@@ -250,12 +272,13 @@ function populate_gui() {
     let parent_div = document.getElementById('mad_div');
 
     let lobby_div = get_lobby_div(); //the global lobby
+    let news_div = get_news_div(); // the news feed
     let room_div = get_waiting_room_div(); // the waiting room between games
     let game_canvas_div = get_game_div(); // the game board itself
     let game_scoreboard = document.createElement('div'); // the scoreboard
     let chat_div = get_chat_div();
     let footer_div = document.createElement('div');
-    let news_div = document.createElement('div');
+    
 
     parent_div.appendChild(lobby_div);
     parent_div.appendChild(room_div);

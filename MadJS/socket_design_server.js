@@ -1,6 +1,6 @@
 
 const debug_mode = true;
-const DEFAULT_TICK_SPEED = 1250;
+const DEFAULT_TICK_SPEED = 250;
 
 const express = require('express');
 const app = express();
@@ -96,7 +96,7 @@ io.on('connection', (socket) => {
 
 });
 
-function update_lobby_room_info() {
+function update_lobby_info() {
 // Updates the list of active rooms and returns a list of currently open rooms and their statuses
     let list_open_rooms = []
 
@@ -109,16 +109,11 @@ function update_lobby_room_info() {
             let room_row = {'room_id':room_id, 'game_mode':'Free For All', 'players':`${players}/8`, 'bots':'2','status':'Open'}
             list_open_rooms.push(room_row)
         } else {
-            console.log(`TODO remove the room ${g_room}`)
+            room_ids = room_ids.filter(item => item !== room_id) // remove the room from the list of active rooms
         }
 
     });
     return list_open_rooms
-
-
-
-
-
 
 }
 
@@ -134,17 +129,23 @@ server.listen(3000, () => {
     console.log('Listening on *:3000');
     setInterval(function(){ 
 
-        let lobby_room_info = update_lobby_room_info()
-        io.to('lobby').emit('lobby_room_info', lobby_room_info);
+        //Update lobby info
+        let lobby_info = update_lobby_info()
+        let players_in_lobby = 0;
+        if (io.sockets.adapter.rooms.get('lobby')) {
+            players_in_lobby = io.sockets.adapter.rooms.get('lobby').size;
+        }
 
+        let players_online = io.engine.clientsCount;
+
+        // Send lobby info to all players in the lobby
+        io.to('lobby').emit('lobby_info', lobby_info, players_in_lobby, players_online);
+
+        // Send game info to each activer room
         room_ids.forEach(room_id => {
             console.log('Emitting to room ' + room_id)
             io.to(room_id).emit('tick', game_state(room_id))
         });
-
-
-        // console.log('.')   
-        // io.to('game_00000001').emit('tick', 'test !!!!')
 
     }, DEFAULT_TICK_SPEED);
 });

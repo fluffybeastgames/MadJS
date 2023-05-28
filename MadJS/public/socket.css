@@ -12,16 +12,18 @@
 
 #mad-lobby-div {
     display: block;
-    margin: 10;
+    margin: auto;
     padding: 20;    
     outline: thick solid #222288;
+    width: 50%;
 }
 
 #mad-waiting-room-div {
     display: block;
-    margin: 10;
+    margin: auto;
     padding: 20;    
     outline: thick solid #228822;
+    width: 50%;
 }
 
 #mad-game-div {
@@ -36,4 +38,20 @@
     outline: thick solid #BBBB22;
     margin: 10;
     padding: 20;    
+}
+
+#table-waiting-room-player-list {
+    outline: thick solid #22BBBB;
+    margin: 10;
+    padding: 20;    
+}
+
+#mad-news-div {
+    outline: thick solid #0000FF;
+    position: fixed;
+    display: block;
+    top: 50;
+    right: 0;
+    margin: 10;
+    padding: 20;
 }

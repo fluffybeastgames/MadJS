@@ -48,8 +48,10 @@ const DEFAULT_TICK_SPEED = 500;
 class Game {
     // game = new Game(n_rows, n_cols, fog_of_war, 1, human_player_info, num_bots, starting_troops, water_weight, mountain_weight, swamp_weight, ship_weight);
     
-    constructor(game_id, n_rows, n_cols, fog_of_war) {
-        this.game_id = game_id; // a unique? reference to this particular game, or possibly to its underlying lobby
+    constructor(room_id, game_id, n_rows, n_cols, fog_of_war) {
+        this.room_id = room_id; // name of the lobby this game belongs to
+        this.game_id = game_id; // a unique? reference to this particular game
+        
         this.players = []
         this.player_turn_order = []
         this.status = GAME_STATUS_INIT
@@ -415,7 +417,9 @@ class Game {
         
         // send the game data the specified player
         // TODO this is currently emiting to everyone, need it to go to just the desired player
-        io.emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
+        io.to(this.game_id).emit(emit_code, game_string);  // either 'new_game_from_server' or 'client_receives_game_state'
+        // io.emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
+        // io.to("global_lobby").emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
         
     }
 
@@ -816,12 +820,12 @@ class Bot {
 //     request_new_game(game_data_json); // server side initiation process for a new game
 // }
 
-function request_new_game(game_data_json) {
+function request_new_game(lobby_id, game_data_json) {
     console.log('i am request_new_game')
     let game_data = JSON.parse(game_data_json)
 
-    let new_game_id = Math.floor(Math.random()*10**16); // TODO possibly temp - make into the room id of the lobby that created this game?
-
+    let new_game_id = 'g' + Math.floor(Math.random()*10**16); // TODO possibly temp - make into the room id of the lobby that created this game?
+    
 
     // For each possible game setting, use the json input value, if present, and default to random/default values
     let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
@@ -844,7 +848,7 @@ function request_new_game(game_data_json) {
 
     
     // games.push(new Game(n_rows, n_cols, fog_of_war);)
-    let new_g = new Game(new_game_id, n_rows, n_cols, fog_of_war);
+    let new_g = new Game(lobby_id, new_game_id, n_rows, n_cols, fog_of_war);
     
     let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
     new_g.add_human('12345678', player_name, '#0a5a07');
@@ -867,10 +871,12 @@ function request_new_game(game_data_json) {
     new_g.status = GAME_STATUS_IN_PROGRESS;
     new_g.game_on = true; // start with the simulation running instead of paused
 
-    new_g.send_game_state_to(0, 'new_game_from_server');
+    // new_g.send_game_state_to(0, 'new_game_from_server');
     games[new_game_id] = new_g; // add game to the list of active games
 
     console.log('i was request_new_game. new game id: ', new_game_id)
+
+    return new_game_id;
 }
 
 
@@ -966,11 +972,18 @@ io.on('connection', (socket) => {
     socket.on('cancel_move_queue', (game_id, player_id) => {
         games[game_id].players[player_id].queued_moves.length = 0;
     } );
+    
+    //io.to("some room").emit("some event");
 
-    socket.on('request_new_game', (game_data_json) => {
+    socket.on('request_new_game', (game_data_json) => {// this needs to come from a room instead of a socket I think?
         console.log('request_new_game')
         // console.log(game_data_json)
-        request_new_game(game_data_json);
+        let lobby_id = -123; //TODO
+        let new_game_id = request_new_game(lobby_id, game_data_json);
+        
+        socket.join(new_game_id);
+        games[new_game_id].send_game_state_to(0, 'new_game_from_server');
+    
     } );
 
     socket.on('toggle_pause_server', (game_id, toggle, override) => {
@@ -981,7 +994,9 @@ io.on('connection', (socket) => {
             }
             else {
                 console.log('Setting pause to', ! override, 'game:', game_id)
-                games[game_id].game_on = override
+                if (games[game_id]) {
+                    games[game_id].game_on = override
+                }
             }    
         
             io.emit('toggle_pause_received', games[game_id].game_on);
@@ -1021,36 +1036,23 @@ server.listen(3000, () => {
     // This controls the game loop. Each active game advances one tick each time this interval passes
         
         let keys = Object.keys(games);
-        console.log(keys);
+        // console.log(keys);
         for (let i = 0; i < keys.length; i++) {
             let g = games[keys[i]];
-            console.log(`Game ${i} - id:${g.game_id}, Size: ${g.num_rows} x ${g.num_cols} - tick ${g.game_tick_server}, status/game on: ${g.status}, ${g.game_on}`);
+            // console.log(`Game ${i} - id:${g.game_id}, Size: ${g.num_rows} x ${g.num_cols} - tick ${g.game_tick_server}, status/game on: ${g.status}, ${g.game_on}`);
             
             if (g.status == GAME_STATUS_IN_PROGRESS && g.game_on) {
                 console.log('tick - ', g.game_id, g.game_tick_server)
                 g.check_for_game_over(); //todo
                 g.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
                 g.send_game_state_to_players();
+            } else if ([GAME_STATUS_GAME_OVER_LOSE, GAME_STATUS_GAME_OVER_WIN].includes(g.status)) { 
+                console.log('TODO end game')
+
             };
             
         }
 
-        // for (let key in Object.keys(games)) {
-        //     g = games[key]
-        // // games.forEach(g => {
-        //     console.log('tick check - g status and game_on:', g.status, g.game_on)
-        //     console.log(g)
-            
-        //     if (g.status == GAME_STATUS_IN_PROGRESS && g.game_on) {
-        //         console.log('tick - ', g.game_id, g.game_tick_server)
-        //         g.check_for_game_over(); //todo
-        //         g.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-        //         g.send_game_state_to_players();
-        //     };
-        // // });
-        // };
-
-       // io.emit('news_by_server', 'testing');
     }, DEFAULT_TICK_SPEED);
 });
 

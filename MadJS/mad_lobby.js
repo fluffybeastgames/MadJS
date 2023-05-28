@@ -29,12 +29,12 @@ function populate_room_list(room_data) {
         }
 
         return (
-            `<tr bgcolor="${bg_color}" onclick="test_click()">
-            <td style="color:#222288;text-align:center;${cursor_style}">${room.game_mode}</td>
-            <td style="color:#222288;text-align:center;${cursor_style}">${room.players_curr}/${room.players_max}</td>
-            <td style="color:#222288;text-align:center;${cursor_style}">${room.bot_count}</td>
-            <td style="color:#222288;text-align:center;${cursor_style}">${room.status}</td>
-            <td style="color:#222288;text-align:center;${cursor_style}">${room.room_id}</td>
+            `<tr bgcolor="${bg_color}" style="${cursor_style}" onclick="test_click()">
+            <td style="color:#222288;text-align:center;">${room.game_mode}</td>
+            <td style="color:#222288;text-align:center;">${room.players_curr}/${room.players_max}</td>
+            <td style="color:#222288;text-align:center;">${room.bot_count}</td>
+            <td style="color:#222288;text-align:center;">${room.status}</td>
+            <td style="color:#222288;text-align:center;">${room.room_id}</td>
             </tr>`
         );
     }).join('');

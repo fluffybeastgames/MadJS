@@ -70,7 +70,29 @@
         </div>
         <div class="w3-row">
             <div class="w3-padding w3-grey w3-rest" id="canvas_div">
-                <div id="mad-overlay" onclick="hide_new_game_overlay()">
+                <div id="mad-game-settings" onclick="hide_new_game_overlay()">
+                </div> 
+                <div id="mad-lobby" style="display:none">
+                    <h3>Rooms</h3>
+                    <table style="border:2px solid green;">  
+                        <thead>
+                          <tr>
+                            <th scope="col">Game Mode</th>
+                            <th scope="col">Players</th>
+                            <th scope="col">Bots</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Room ID (should be hidden)</th>
+                          </tr>
+                        </thead>
+                        <tbody id="room_list_body">                 
+                        </tbody>
+                        <tfoot>
+                            <tr><th scope="col">
+                                <button type="button" onclick="create_new_room()">New Room</button>
+                            </th></tr>
+                            
+                        </tfoot>
+                    </table>
                 </div> 
                 
                 
