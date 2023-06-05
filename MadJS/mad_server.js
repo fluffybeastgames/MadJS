@@ -929,7 +929,6 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
 
-var visitor_ct = 0;
 
 app.use(express.static('./'))
 // app.use(express.static('./assets/')); // enable node to access the assets folder
@@ -1017,8 +1016,8 @@ io.of("/").adapter.on("join-room", (room, id) => {
 console.log(`socket ${id} has joined room ${room}`);
 });
 
-server.listen(3000, () => {
-    console.log('Listening on *:3000');
+server.listen(3001, () => {
+    console.log('Listening on *:3001');
 
     let start_time = Date.now()
 

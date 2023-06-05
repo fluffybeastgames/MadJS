@@ -9,8 +9,12 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
 
+
+const mad_server = require(__dirname + "/mad_server");
+
 let sockets = [];
-let room_ids = []; //['game_00000001'];
+let room_ids = []; //['r_00000001'];
+let games = []; //[{game_id='g_00000001', players=[], num_rows=x, num_cols=y, game_status = 'Init', game_turn = 0, game_mode = 'ffa', board=[]}]
 
 app.use(express.static(__dirname + '/public'));
 
@@ -66,6 +70,9 @@ io.on('connection', (socket) => {
 
     socket.on('start_game', function(room_id){ // host clicked Start Game
         if(debug_mode){console.log('start_game', room_id)}
+        
+        //TODO here start the game
+        games.push(room_id);
 
         io.to(room_id).emit('tell_client_game_has_started')
     });
@@ -121,8 +128,13 @@ function game_state(room_id) {
 // Returns an object representing the current game state and other pertinent information about the current room
 
     let data = {
-        'room_id': room_id
-    }
+        'room_id': room_id,
+        players: [],
+        'game_mode': 'Free For All',
+        'game_status': 'In Progress',
+        'game_turn': 1,
+
+    };
 
 }
 server.listen(3000, () => {
@@ -143,7 +155,7 @@ server.listen(3000, () => {
 
         // Send game info to each activer room
         room_ids.forEach(room_id => {
-            console.log('Emitting to room ' + room_id)
+            // console.log('Emitting to room ' + room_id)
             io.to(room_id).emit('tick', game_state(room_id))
         });
 

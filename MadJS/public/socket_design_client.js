@@ -1,6 +1,8 @@
 "use strict"
 console.log('socket_design_client.js loaded')
 
+// const mad_client = require("./mad_client");
+
 let active_room_id = '-1';
 let active_game_id = '-2';
 let last_clicked_lobby_room_id = -1;
@@ -84,6 +86,14 @@ socket_local.on('lobby_info', function(list_rooms, players_in_lobby, players_onl
 
 socket_local.on('tell_client_game_has_started', function(game_id) {
     active_game_id = game_id;
+    // json_test = []
+    // mad_client.new_game_client(); //LEFT HERE 6/5
+
+    switch_to_game_gui();
+
+
+    
+
 })
 
 
@@ -181,13 +191,9 @@ function populate_gui() {
                     
                     for(let i=0; i<n_cols; i++) {
                         tbl_row.cells[i].style.backgroundColor = '#FFBBBB' //todo only highlight this cell
-                    }
-                    
+                    }   
                 }
-
-
             });
-
 
             for (const key of keys) {
                 const tbl_cell = document.createElement('td');
@@ -196,9 +202,7 @@ function populate_gui() {
               }
 
             tbl_lobby.appendChild(tbl_row);
-            
-        }
-        
+        }        
 
         let btn_create = document.createElement('button');
         btn_create.innerText = 'Create New Room';
@@ -266,6 +270,34 @@ function populate_gui() {
     function get_game_div() {
         let div = document.createElement('div');
         div.id = 'mad-game-div';
+
+        let canvas = document.createElement('canvas');
+        canvas.id = 'canvas';
+        
+        div.appendChild(canvas);
+        
+        canvas.width = 100;
+        canvas.height = 100;
+        canvas.style.border = '1px solid lightgrey';
+        canvas.style.position = 'absolute'; 
+        canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
+        
+        let context = canvas.getContext('2d');
+    
+        canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
+        canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
+        canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
+        drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
+        
+        // Add event listener on keydown
+        document.addEventListener('keydown', (event) => {
+            //if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
+            if (VALID_KEY_PRESSES.includes(event.key)) {
+                event.preventDefault();
+                handle_key_press(event.key)
+            }
+        }, false);
+
         return div;
     }
     
@@ -293,5 +325,14 @@ function populate_gui() {
     // document.getElementById("para").onclick = function() {  }
 }
 
+function x() {
+    sprite_sheet = new Image();
+    sprite_sheet.src = './img/sprites3.png';
+    
+    
+    window.requestAnimationFrame(() => game_loop_client()); // start the game loop
+}
 
 populate_gui();
+x();
+

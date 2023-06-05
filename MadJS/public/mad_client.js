@@ -68,14 +68,14 @@ const DEFAULT_CANVAS_HEIGHT = 50;
 const DEFAULT_FONT_SIZE = 18;
 let font_size = DEFAULT_FONT_SIZE;
 
-const RENDER_REFRESH_TIME = 50 // time in ms to wait after rendering before rendering. Due to how setTimeout works, may be up to 16 ms late
+const RENDER_REFRESH_TIME = 50; // time in ms to wait after rendering before rendering. Due to how setTimeout works, may be up to 16 ms late
 
 let new_game_overlay_visible = false;
 
 let game_data; // info that persists for one game
 let game_state_data; // info that persists for one turn
 
-page_load_behavior() // define canvas and add event listeners
+// page_load_behavior() // define canvas and add event listeners
 
 
 function show_new_game_overlay() {
@@ -254,44 +254,44 @@ function launch_new_game(event) {
     hide_new_game_overlay()
 }
 
-function page_load_behavior(){
-    canvas = document.getElementById('canvas'); // Get a reference to the canvas
-    canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
-    context = canvas.getContext('2d');
+// function page_load_behavior(){
+//     canvas = document.getElementById('canvas'); // Get a reference to the canvas
+//     canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
+//     context = canvas.getContext('2d');
 
-    canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
-    canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
-    canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
-    drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
+//     canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
+//     canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
+//     canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
+//     drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
     
-    // Add event listener on keydown
-    document.addEventListener('keydown', (event) => {
-        if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
-            event.preventDefault();
-            handle_key_press(event.key)
-        }
-    }, false);
-}
+//     // Add event listener on keydown
+//     document.addEventListener('keydown', (event) => {
+//         if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
+//             event.preventDefault();
+//             handle_key_press(event.key)
+//         }
+//     }, false);
+// }
 
 
 //game init on server, event handlers on client side, canvas/context def on client
 //function init_client(game_data_string, sock){
-function init_client(sock){
-    client_socket = sock;
-    console.log('Initializing a Madmirals instance')
+// function init_client(sock){
+//     client_socket = sock;
+//     console.log('Initializing a Madmirals instance')
 
-    // console.log(game_data)
+//     // console.log(game_data)
     
-    sprite_sheet = new Image();
-    sprite_sheet.src = './img/sprites3.png';
-    populate_new_game_overlay();
+//     sprite_sheet = new Image();
+//     sprite_sheet.src = './img/sprites3.png';
+//     populate_new_game_overlay();
 
-    // // console.log('initial game:', game_data.game.n_rows, game_data.game.n_cols)
-    // new_game_client(game_data_string);
-    // render_board(); // display the starting conditions for the sim
+//     // // console.log('initial game:', game_data.game.n_rows, game_data.game.n_cols)
+//     // new_game_client(game_data_string);
+//     // render_board(); // display the starting conditions for the sim
     
-    window.requestAnimationFrame(() => game_loop_client()); // start the game loop
-}
+//     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
+// }
 
 function new_game_client(game_data_string) {
     game_data = JSON.parse(game_data_string);
@@ -600,6 +600,9 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
 
 function render_board() {    
     //console.log('render_board()')
+    let canvas = document.getElementById('canvas');
+    let context = canvas.getContext('2d');
+
     context.fillStyle=CellClient.hidden_color  
     context.fillRect(0, 0, canvas.width, canvas.height); // Clear the board
     
