@@ -15,7 +15,8 @@ socket_local.on('mad_log', function(msg) {
 });
 
 socket_local.on('tick', function(msg) {
-    console.log('tick ' + msg)
+    console.log('tick')
+    console.log(msg)
 } );
 
 
@@ -35,6 +36,17 @@ socket_local.on('client_joined_room', function(room_id) {
     switch_to_waiting_room_gui()
 
 });
+
+socket_local.on('a_user_joined_the_room', function(user_id) {
+    console.log('a_user_joined_the_room', user_id)
+    document.getElementById('socket_log').innerHTML = document.getElementById('socket_log').innerHTML + '<br>' + user_id + ' joined the room';
+});
+
+socket_local.on('a_user_left_the_room', function(user_id) {
+    console.log('a_user_left_the_room', user_id)
+    document.getElementById('socket_log').innerHTML = document.getElementById('socket_log').innerHTML + '<br>' + user_id + ' left the room';
+});
+
 
 socket_local.on('lobby_info', function(list_rooms, players_in_lobby, players_online) {
     document.getElementById('players_online').innerHTML = `Players Online: ${players_online}`
@@ -101,27 +113,46 @@ function switch_to_waiting_room_gui() {
     document.getElementById('mad-lobby-div').style.display = 'none';
     document.getElementById('mad-waiting-room-div').style.display = 'block';
     document.getElementById('mad-game-div').style.display = 'none';
+    document.getElementById('mad-news-div').style.display = 'block';
+    reset_chat_log();
 }
 
 function switch_to_lobby_gui() {
     document.getElementById('mad-lobby-div').style.display = 'block';
     document.getElementById('mad-waiting-room-div').style.display = 'none';
     document.getElementById('mad-game-div').style.display = 'none';
+    document.getElementById('mad-news-div').style.display = 'block';
+    reset_chat_log();
+    active_room_id = 'lobby';
 }
 
 function switch_to_game_gui() {
     document.getElementById('mad-lobby-div').style.display = 'none';
     document.getElementById('mad-waiting-room-div').style.display = 'none';
     document.getElementById('mad-game-div').style.display = 'block';
+    document.getElementById('mad-news-div').style.display = 'none';
+    reset_chat_log();
 }
 
-
-
-
+function reset_chat_log() {
+    document.getElementById('socket_log').innerHTML = '';
+}
 
 function send_chat_message(room, msg) {
-    // socket_local.to
+    if (msg.length > 0)  {
+        socket_local.emit('send_chat_message', room, msg);
+    }
 }
+
+socket_local.on('receive_chat_message', function(sender_id, msg) {
+    console.log('receive_chat_message', sender_id, msg)
+    document.getElementById('socket_log').innerHTML = document.getElementById('socket_log').innerHTML + '<br>' + sender_id + ': ' + msg
+});
+    
+
+    // emit('receive_chat_message', socket.id, msg)
+
+
 
 // function generateTableHead(table, data) {
 //     let thead = table.createTHead();
@@ -260,10 +291,37 @@ function populate_gui() {
     function get_chat_div() {
         let div = document.createElement('div');
         div.id = 'mad-chat-div';
+
+        let div_chat_messages = document.createElement('div');
+        div_chat_messages.id = 'mad-chat-inner-div';
+        div.appendChild(div_chat_messages);
         
         let p_chat = document.createElement('p')
         p_chat.id = 'socket_log'
-        div.appendChild(p_chat);
+        div_chat_messages.appendChild(p_chat);
+
+        let input_chat = document.createElement('input')
+        input_chat.id = 'input_chat'
+        div.appendChild(input_chat);
+
+        let btn_send_chat = document.createElement('button');
+        btn_send_chat.innerText = 'Send Chat';
+        btn_send_chat.addEventListener('click', function(){
+            let msg = document.getElementById('input_chat').value;
+            send_chat_message(active_room_id, msg);
+            document.getElementById('input_chat').value = '';
+        });
+
+        input_chat.addEventListener('keypress', function(event) { //allow the user to use the enter key to send chat messages
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              btn_send_chat.click();
+            }
+          });
+
+
+        div.appendChild(btn_send_chat);
+
         return div;
     }
 
@@ -291,10 +349,14 @@ function populate_gui() {
         
         // Add event listener on keydown
         document.addEventListener('keydown', (event) => {
-            //if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
-            if (VALID_KEY_PRESSES.includes(event.key)) {
-                event.preventDefault();
-                handle_key_press(event.key)
+            if (document.activeElement.id == 'input_chat') { //don't handle key presses if the user is typing in the chat boxq
+                
+            } else {
+                //if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {
+                if (VALID_KEY_PRESSES.includes(event.key)) {
+                    event.preventDefault();
+                    handle_key_press(event.key)
+                }
             }
         }, false);
 
