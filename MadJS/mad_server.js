@@ -4,7 +4,13 @@ const path_finder = require("./path_finder");
 // const mad_common = require("./mad_common");
 // const c = require("./mad_constants");
 
-let games = {};
+// let games = {};
+
+let sockets = [];
+let room_ids = []; //['r_00000001'];
+let games = []; //[{game_id='g_00000001', players=[], num_rows=x, num_cols=y, game_status = 'Init', game_turn = 0, game_mode = 'ffa', board=[]}]
+let rooms = []; //an array of room objects. Each room object contains a room_id, a list of players, and a game object (iniitialized to null)
+const debug_mode = true;
 
 ///////////
 // Shared constants
@@ -921,7 +927,57 @@ function test_weighted_choice() {
     };
     console.log(arr_results) // results with a sample size of 10,000: [0, 240, 447, 711, 851, 1127, 1322, 1586, 1710, 2006, 0]
 }
+
+
+function mad_log(msg) {
+    console.log(msg);
+    // let emitted = io.to('mad_log').emit(msg);
+    io.emit('mad_log', msg);
+    // console.log(emitted);
+    
+}
+
+
+
+function update_lobby_info() {
+// Updates the list of active rooms and returns a list of currently open rooms and their statuses
+    let list_open_rooms = []
+    // console.log('update_lobby_info')    
+    rooms.forEach(room => {
+        // console.log('Emitting to room ' + room.room_id)
+        let g_room = io.sockets.adapter.rooms.get(room.room_id);
+        if(g_room) {
+            let players = io.sockets.adapter.rooms.get(room.room_id).size
         
+            let room_row = {'room_id':room.room_id, 'game_mode':'Free For All', 'players':`${players}/8`, 'bots':'2','status':'Open'}
+            list_open_rooms.push(room_row)
+        }
+
+    });
+    return list_open_rooms
+
+}
+
+function game_state(room) {
+// Returns an object representing the current game state and other pertinent information about the current room
+//TODO THIS IS A PLACEHOLDER FROM SOCKET_DESIGN_SERVER - replace w/ appropriate data
+    
+    // for game in games { };
+    // if(room_id in games) {
+
+
+    let data = {
+        'room_id': room.room_id,
+        players: [],
+        'game_mode': 'Free For All',
+        'game_status': 'In Progress',
+        'game_turn': 1,
+
+    };
+    return data;
+    
+}
+
 const express = require('express');
 const app = express();
 const http = require('http');
@@ -930,28 +986,103 @@ const { Server } = require("socket.io");
 const io = new Server(server);
 
 
-app.use(express.static('./'))
+app.use(express.static(__dirname + '/public'));
+// app.use(express.static('./'))
 // app.use(express.static('./assets/')); // enable node to access the assets folder
 
+// app.get('/', (req, res) => {
+//     res.sendFile(__dirname + '/index.html');
+// });
+
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
+    res.sendFile(__dirname + '/public/socket_design.html');
 });
 
+class Room {
+    constructor() {
+        this.room_id = 'r' + Math.floor(Math.random()*10**8); // use a sufficiently random identifier for the room
+        this.game = null;
+        this.players = [];
+        this.status = 'open';
+
+    }
+}
 io.on('connection', (socket) => {
     console.log(`user ${socket.id} connected`);
 
-    socket.join('global_lobby');
-    //socket.join('game_0000000001');
+    ////FROM socket_design:
+    mad_log(`user ${socket.id} connected`)
+    socket.join('lobby');
+    // socket.join('global_lobby');
 
-    // let starting_game_settings =  {
-    //     n_rows: 15,
-    //     n_cols: 25,
-    //     n_bots: 2,
-    //     fog_of_war: false
-    // };
-    // request_new_game(starting_game_settings);
+    // socket.emit('client_connected')
 
-    socket.emit('client_connected')
+    
+    socket.on('create_room', function(){ // user clicked Create Room
+        if(debug_mode){console.log('create_room')}
+
+        let new_room = new Room();
+        rooms.push(new_room);
+       
+        socket.join(new_room.room_id); // create new room by joining it
+        io.to(socket.id).emit('client_joined_room', new_room.room_id)
+    });
+
+    socket.on('join_game_room', function(room_to_join){ // user clicked Join Room (while a valid room is selected?)
+        if(debug_mode){console.log('join_game_room', room_to_join)}
+
+        const i = rooms.findIndex(e => e.room_id === room_to_join); 
+        if (i > -1) {//rooms[i] contains the room object with id room_to_join
+            socket.join(room_to_join)
+            io.to(socket.id).emit('client_joined_room', room_to_join)
+            socket.to(room_to_join).emit('a_user_joined_the_room', socket.id)
+        } else {
+            console.log(`Socket ${socket.id} attempted to join non-existent room ${room_to_join}`);
+        }
+        
+        
+    });
+
+    socket.on('leave_game_room', function(room_id){ // user clicked Leave Room button
+        if(debug_mode){console.log('leave_room - room:', room_id )}
+        socket.to(room_id).emit('a_user_left_the_room', socket.id)
+        socket.leave(room_id);
+
+        //if the user was the last human in the room, kill the room
+        let g_room = io.sockets.adapter.rooms.get(room_id);
+        if(!g_room) { 
+            rooms = rooms.filter(item => item.room_id !== room_id); // remove the room from the list of active rooms
+            console.log(`Room ${room_id} was empty and was removed from the list of active rooms`);
+        }
+        
+    });
+
+    socket.on('toggle_ready', function(room_id){ // user clicked "Ready"
+        if(debug_mode){console.log('toggle_ready - room', room_id)}
+    });
+
+    socket.on('start_game', function(room_id){ // host clicked Start Game
+        if(debug_mode){console.log('start_game', room_id)}
+        
+        //TODO here start the game
+        //function request_new_game(lobby_id, game_data_json) {
+        let game_id = request_new_game(room_id, '{}');
+        games.push(game_id);
+
+        io.to(room_id).emit('tell_client_game_has_started')
+    });
+
+    socket.on('add_move_to_queue', function(){ //
+        if(debug_mode){console.log('add_move_to_queue')}
+    });
+
+    socket.on('send_chat_message', function(room_id, msg){ // user sent a chat message 
+        if(debug_mode){console.log('send_chat_message', room_id, msg)}
+        io.to(room_id).emit('receive_chat_message', socket.id, msg)
+    });
+
+
+    ////FROM mad_server:
 
     socket.on('queue_new_move', (game_id, new_move) => {
         //console.log('queue_new_move', new_move);
@@ -1016,43 +1147,58 @@ io.of("/").adapter.on("join-room", (room, id) => {
 console.log(`socket ${id} has joined room ${room}`);
 });
 
-server.listen(3001, () => {
-    console.log('Listening on *:3001');
-
-    let start_time = Date.now()
-
-    // let starting_game_settings =  {
-    //     n_rows: 15,
-    //     n_cols: 25,
-    //     n_bots: 2,
-    //     fog_of_war: false
-    // };
-    // let game_data_string = JSON.stringify(starting_game_settings); //TODO socket.io says There is no need to run JSON.stringify() on objects as it will be done for you.
- //   window.onload = init_server(game_data_string); // later this will be performed in a separate node app
-    // init_server(game_data_string)
-    
+let port = 3000;
+server.listen(port, () => {
+    console.log(`Listening on *:${port}`);
+    let start_time = Date.now()    
     setInterval(function(){ 
     // This controls the game loop. Each active game advances one tick each time this interval passes
         
-        let keys = Object.keys(games);
-        // console.log(keys);
-        for (let i = 0; i < keys.length; i++) {
-            let g = games[keys[i]];
-            // console.log(`Game ${i} - id:${g.game_id}, Size: ${g.num_rows} x ${g.num_cols} - tick ${g.game_tick_server}, status/game on: ${g.status}, ${g.game_on}`);
-            
-            if (g.status == GAME_STATUS_IN_PROGRESS && g.game_on) {
-                console.log('tick - ', g.game_id, g.game_tick_server)
-                g.check_for_game_over(); //todo
-                g.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
-                g.send_game_state_to_players();
-            } else if ([GAME_STATUS_GAME_OVER_LOSE, GAME_STATUS_GAME_OVER_WIN].includes(g.status)) { 
-                console.log('TODO end game')
-
-            };
-            
+        ////STARTING HERE FROM socket_design
+        //Update lobby info
+        let lobby_info = update_lobby_info()
+        let players_in_lobby = 0;
+        if (io.sockets.adapter.rooms.get('lobby')) {
+            players_in_lobby = io.sockets.adapter.rooms.get('lobby').size;
         }
+
+        let players_online = io.engine.clientsCount;
+
+        // Send lobby info to all players in the lobby
+        io.to('lobby').emit('lobby_info', lobby_info, players_in_lobby, players_online);
+
+        // Send game info to each activer room
+        rooms.forEach(room => {
+
+            //if game is on: 
+            // console.log('Emitting to room ' + room_id)
+            io.to(room.room_id).emit('tick', game_state(room))
+        });
+        ////END FROM socket_design
+
+
+        //TODO partially restore this functionality in a way that doesn't break the new game creation process
+
+        // let keys = Object.keys(games);
+        // // console.log(keys);
+        // for (let i = 0; i < keys.length; i++) {
+        //     let g = games[keys[i]];
+        //     // console.log(`Game ${i} - id:${g.game_id}, Size: ${g.num_rows} x ${g.num_cols} - tick ${g.game_tick_server}, status/game on: ${g.status}, ${g.game_on}`);
+            
+        //     if (g.status == GAME_STATUS_IN_PROGRESS && g.game_on) {
+        //         console.log('tick - ', g.game_id, g.game_tick_server)
+        //         g.check_for_game_over(); //todo
+        //         g.tick(); // check each cell to see if it should be alive next turn and update the .alive tag                
+        //         g.send_game_state_to_players();
+        //     } else if ([GAME_STATUS_GAME_OVER_LOSE, GAME_STATUS_GAME_OVER_WIN].includes(g.status)) { 
+        //         console.log('TODO end game')
+
+        //     };
+            
+        // }
 
     }, DEFAULT_TICK_SPEED);
 });
 
 
+console.log('gee whiz')
