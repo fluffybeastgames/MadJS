@@ -72,8 +72,6 @@ const RENDER_REFRESH_TIME = 50; // time in ms to wait after rendering before ren
 
 let new_game_overlay_visible = false;
 
-let game_data; // info that persists for one game
-let game_state_data; // info that persists for one turn
 
 // page_load_behavior() // define canvas and add event listeners
 
@@ -293,15 +291,6 @@ function launch_new_game(event) {
 //     window.requestAnimationFrame(() => game_loop_client()); // start the game loop
 // }
 
-function new_game_client(game_data_string) {
-    game_data = JSON.parse(game_data_string);
-    //call this after a new game has been created at the server level
-    canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
-    canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
-    create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
-    move_mode = ACTION_MOVE_NORMAL;
-    render_board(); // display the starting conditions for the sim
-}
 
 function get_player_color(owner){
     if('scoreboard' in game_state_data) { 
@@ -364,6 +353,7 @@ class CellClient {
 
         let water_color = this.get_water_color(); // different at low and hide tide
         let swamp_color = this.get_swamp_color(); // different at low and hide tide
+        
         
         this.context.strokeStyle = CellClient.grid_color;
         this.context.lineWidth = 1;
@@ -589,6 +579,9 @@ function create_client_cells(n_rows, n_cols) { // in the future this will only b
     console.log('creating client cell grid', n_rows, n_cols)
     cells_client = []; // reset the array of cells, in case this isn't first game of session
 
+    let canvas = document.getElementById('canvas');
+    let context = canvas.getContext('2d');
+        
     let id = 0;
     for(let r = 0; r < n_rows; r++) {
         for(let c = 0; c < n_cols; c++) {
@@ -623,8 +616,8 @@ function render_board() {
 
     // display the turn number
     if (game_tick_local) {
-        document.getElementById('turn_counter').innerText = `Turn ${game_tick_local}`
-        document.getElementById('turn_counter_scoreboard').innerText = `Turn ${game_tick_local}`
+        // document.getElementById('turn_counter').innerText = `Turn ${game_tick_local}`
+        document.getElementById('turn-counter-scoreboard').innerText = `Turn ${game_tick_local}`
     }    
 }
 
@@ -641,7 +634,7 @@ function highlight_active_cell() {
             cell.context.strokeRect(cell.col*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
             
             // Slightly darken the cells around the active cell to highlight its location
-            context.fillStyle = "rgba(0, 0, 0, 0.2)";
+            cell.context.fillStyle = "rgba(0, 0, 0, 0.2)";
             cell.context.fillRect((cell.col-1)*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
             cell.context.fillRect((cell.col+1)*CellClient.width, cell.row*CellClient.height, CellClient.width, CellClient.height);
             cell.context.fillRect((cell.col)*CellClient.width, (cell.row-1)*CellClient.height, CellClient.width, CellClient.height);
@@ -651,6 +644,7 @@ function highlight_active_cell() {
 }
 
 function canvas_mouse_handler(event) {
+    console.log(event)
     event.preventDefault() // prevent default mouse behavior, mainly preventing middle click from activating scroll mode
         
     if (event.button == 0) { //left click
@@ -728,8 +722,10 @@ function select_cell_at(x, y) { // returns true if the active cell changed, and 
 }
 
 function handle_key_press(key_key) {
+    console.log('handle key press', key_key, active_cell)
     //If they user has pressed a movement key, then try to move the active cell
     let target_row, target_col;
+
     if ((key_key == 'W' || key_key == 'w' || key_key == 'ArrowUp') && active_cell[0] > 0) {
         target_row = active_cell[0] - 1
         target_col = active_cell[1]
@@ -778,7 +774,7 @@ function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
     //to do queuer: 0 assumes player is always player 0
     
-    client_socket.emit('queue_new_move', game_data.game.game_id, new_move) //, local_player_id, new_move)
+    socket_local.emit('queue_new_move', game_data.game.game_id, new_move) //, local_player_id, new_move)
 
     local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
     // console.log(new_move)
@@ -838,66 +834,4 @@ function drag_canvas_event_handler(canvas_element) {
 function toggle_pause() { //single player mode only. 
     // console.log('attempting to toggle_pause')
     client_socket.emit('toggle_pause_server', game_data.game.game_id, true, true);
-}
-
-function client_receives_game_state_here(game_state_string) {
-    // console.log(game_state_string)
-    game_state_data = JSON.parse(game_state_string);
-    // console.log(game_state_data)
-
-    if (cells_client.length > 0) {    
-        //console.log('Attempting a new way of rendering')
-        
-        game_tick_local = game_state_data.game.turn // update the turn count
-        // Update the board to contain only info the player should currently be able to see
-        cells_client.forEach(cell => {
-            cell.owner = null;
-            cell.troops = 0;
-            cell.entity = null;
-            cell.terrain = null;
-            cell.visible = false;
-        });
-                
-        game_state_data.board.forEach(new_cell => {
-            if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
-            if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
-            if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
-            if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
-            if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
-        });
-
-        let scoreboard_data = game_state_data.scoreboard;
-        scoreboard_data.sort((a, b) => (a.troops > b.troops) ? -1 : 1); //sort by troops, descending
-        
-        const table_body = scoreboard_data.map(value => {
-            let bg_color = value.admirals == 0 ? CellClient.neutral_entity_color : value.color; // remove the player's fleet color from the scoreboard if they're out of the game
-            return (
-                `<tr bgcolor="${bg_color}">
-                <td style="color:#FFFFFF;text-align:center">${value.display_name}</td>
-                <td style="color:#FFFFFF;text-align:center">${value.admirals}</td>
-                <td style="color:#FFFFFF;text-align:center">${value.ships}</td>
-                <td style="color:#FFFFFF;text-align:center">${value.troops}</td>
-                </tr>`
-            );
-        }).join('');
-        document.getElementById('scoreboard_body').innerHTML = table_body;
-    
-    } else {console.log('Not ready yet!')}
-
-    
-    // Update the local move queue - if one or more moves has been removed by the server, remove them from the front of the local queue
-    let new_min_queue_id = game_state_data.game.next_queue_id
-
-    if (new_min_queue_id == '-1') {
-        //console.log('got here')
-        local_move_queue.length = 0;
-    } else {
-        let not_caught_up = true;
-        while (local_move_queue.length>0 && not_caught_up) {
-            if (local_move_queue[0].id < new_min_queue_id) {
-                local_move_queue.shift();
-            } else { not_caught_up = false; } //escape 
-        };
-    }
-    
 }

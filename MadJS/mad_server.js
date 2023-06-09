@@ -51,20 +51,41 @@ const MIN_DISTANCE_ADMIRALS = 5;
 
 const DEFAULT_TICK_SPEED = 500;
 
+function start_new_game(room_id, game_data_json) {
+    console.log('i am start_new_game')
+    let game_data = JSON.parse(game_data_json)
+
+    let player_socket_ids = io.sockets.adapter.rooms.get(room_id);
+    
+    let new_game = new Game(room_id, game_data, player_socket_ids);
+
+    const i = rooms.findIndex(e => e.room_id === room_id); 
+    if (i > -1) {//rooms[i] contains the room object with id room_to_join
+        rooms[i].game = new_game;
+        console.log('game added to room ', room_id)
+    }
+    return new_game;
+    // console.log(rooms[i].game.num_rows, rooms[i].game.num_cols, rooms[i].game.players.length);
+}
+
+
 class Game {
     // game = new Game(n_rows, n_cols, fog_of_war, 1, human_player_info, num_bots, starting_troops, water_weight, mountain_weight, swamp_weight, ship_weight);
-    
-    constructor(room_id, game_id, n_rows, n_cols, fog_of_war) {
-        this.room_id = room_id; // name of the lobby this game belongs to
-        this.game_id = game_id; // a unique? reference to this particular game
+    constructor(room_id, game_data, player_socket_ids) {
+        this.room_id = room_id;
+        this.game_id = 'g' + Math.floor(Math.random()*10**16); // TODO possibly temp - make into the room id of the lobby that created this game?
         
+        console.log('game_id', this.game_id)
+
         this.players = []
         this.player_turn_order = []
         this.status = GAME_STATUS_INIT
-        this.game_on; // when game_on, the game will loop every ~tick_speed ms, increasing the game_tick and advancing the simulation
-        this.fog_of_war = fog_of_war;
-        this.num_rows = n_rows
-        this.num_cols =  n_cols
+        this.game_on = false; // when game_on, the game will loop every ~tick_speed ms, increasing the game_tick and advancing the simulation
+        
+        // For each possible game setting, use the json input value, if present, and default to random/default values
+        this.fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .5;
+        this.num_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);
+        this.num_cols =  'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);
         this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
         this.initialize_cells();
         this.astar_board = new path_finder.ABoard(this.num_rows, this.num_cols, 0);
@@ -72,15 +93,88 @@ class Game {
         this.game_tick_server = -1;
         this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
 
-        // this.astar.print_board([0,0], [1,1]);
+        let n_bots = 'n_bots' in game_data ? game_data.n_bots : Math.floor(Math.random()*4) + 1;;
+        this.add_bots(n_bots);
+
+        console.log('n_bots', n_bots);
+
+        this.add_humans(player_socket_ids);
+        // let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
+        // this.add_human('12345678', player_name, '#0a5a07');
+    
+        this.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+        console.log('admirals have been placed')
+
+        let water_weight = 'water_weight' in game_data ? game_data.water_weight : 10 + Math.random();
+        let mountain_weight = 'mountain_weight' in game_data ? game_data.mountain_weight : 1 + Math.random();
+        let swamp_weight  = 'swamp_weight' in game_data ? game_data.swamp_weight : .1 + Math.random() / 4 ; 
+        let ship_weight = 'ship_weight' in game_data ? game_data.ship_weight : .2 + Math.random() / 2;
+    
+        this.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+        console.log('terrain has been spawned')
+
+        this.status = GAME_STATUS_IN_PROGRESS;
+        this.game_on = true; // start with the simulation running instead of paused
+
+
+    }
+    // constructor_old(room_id, game_id, n_rows, n_cols, fog_of_war) {
+    //     this.room_id = room_id; // name of the lobby this game belongs to
+    //     this.game_id = game_id; // a unique? reference to this particular game
+        
+    //     this.players = []
+    //     this.player_turn_order = []
+    //     this.status = GAME_STATUS_INIT
+    //     this.game_on; // when game_on, the game will loop every ~tick_speed ms, increasing the game_tick and advancing the simulation
+    //     this.fog_of_war = fog_of_war;
+    //     this.num_rows = n_rows
+    //     this.num_cols =  n_cols
+    //     this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
+    //     this.initialize_cells();
+    //     this.astar_board = new path_finder.ABoard(this.num_rows, this.num_cols, 0);
+    //     this.astar = new path_finder.AStar(this.astar_board);
+    //     this.game_tick_server = -1;
+    //     this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
+
+    //     // this.astar.print_board([0,0], [1,1]);
+    // }
+
+    add_humans(player_socket_ids) {
+        let i = 0;
+        player_socket_ids.forEach(socket_id => {
+            this.add_human(socket_id, 'Player ' + i, '#0a5a07');
+            i++;
+        });
     }
 
-    add_human(session_id, name, color) {
+    add_human(socket_id, name, color) {
         let new_id = this.players.length
         this.player_turn_order.push(new_id)
-        this.players.push(new HumanPlayer(this, new_id, session_id, name, color))
+        this.players.push(new HumanPlayer(this, new_id, socket_id, name, color))
+        console.log('added human', socket_id, name, color)
     }
 
+    add_bots(n_bots) {            
+        const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
+        const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
+                                    'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
+                                    'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
+                                    'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
+                                    'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
+                                    'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
+
+        for (let i = 0; i < n_bots; i++) {
+            let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
+            let bot_color = bot_color_options[bot_color_index];
+            bot_color_options.splice(bot_color_index, 1);
+    
+            let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
+            let bot_name = bot_name_options[bot_name_index];
+            bot_name_options.splice(bot_name_index, 1);
+    
+            this.add_bot('bot personality', bot_name, bot_color);
+        };
+    }
     add_bot(personality, name, color) {
         let new_id = this.players.length
         this.player_turn_order.push(new_id)
@@ -363,18 +457,24 @@ class Game {
     
         
     //An attempt at predicting what the server to client communication will look like
-    send_game_state_to_players() {
+    send_game_state_to_players(emit_code) {
         this.players.forEach(player => {
             if (player.is_human) {
-                this.send_game_state_to(player.uid, 'client_receives_game_state');
+                this.send_game_state_to(player.uid, emit_code);
             }
         } );
     }
 
-    send_game_state_to(player_id, emit_code) {
-        // let player_id = 0;
+    send_game_state_to(uid, emit_code) {
+        //uid is the player's position in the players[] list, as opposed to their socket id
         
-        let next_queue_id = this.players[player_id].queued_moves.length > 0 ? this.players[player_id].queued_moves[player_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
+        let socket_id = this.players[uid].socket_id;
+        console.log('send_game_state_to', uid, socket_id, emit_code);
+        // // let player_id = 0;
+        
+        //temp: HERE
+        let next_queue_id = this.players[uid].queued_moves.length > 0 ? this.players[uid].queued_moves[0].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
+        // let next_queue_id = this.players[socket_id].queued_moves.length > 0 ? this.players[socket_id].queued_moves[socket_id].id : -1; // if there are any items remaining in the queue, let them know which ones we've eliminated this turn. -1 will indicate to the client that the queue is empty
 
         // Start with header information about the game
         let game_string = '{ "game": {' +
@@ -390,7 +490,7 @@ class Game {
         // Then loop through and add info about each visible cell
         let fog_of_war_distance = 1; // if 2 or greater, the player can see 2 blocks away from them instead of just 1
         this.cells.forEach(cell => {
-            if (this.should_be_visible(cell, player_id, fog_of_war_distance)) {
+            if (this.should_be_visible(cell, socket_id, fog_of_war_distance)) {
                 let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
                 if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
                 if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
@@ -423,7 +523,8 @@ class Game {
         
         // send the game data the specified player
         // TODO this is currently emiting to everyone, need it to go to just the desired player
-        io.to(this.game_id).emit(emit_code, game_string);  // either 'new_game_from_server' or 'client_receives_game_state'
+        // console.log(game_string)
+        io.to(socket_id).emit(emit_code, game_string);  // either 'new_game_from_server' or 'client_receives_game_state'
         // io.emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
         // io.to("global_lobby").emit(emit_code, game_string);  // either 'client_connected' or 'client_receives_game_state'
         
@@ -544,11 +645,11 @@ class CellServer {
 }
 
 class HumanPlayer {
-    constructor(parent, uid, session_id, name, color) {
+    constructor(parent, uid, socket_id, name, color) {
         this.parent = parent; // the game object that owns this player
         this.uid = uid; // 0-n, may be unecessary as we can use the position in Players[] as the uid
         this.display_name = name;
-        this.session_id = session_id; // the session ID of the connected player
+        this.socket_id = socket_id; // the session ID of the connected player
         this.color = color; //temp. green
         this.queued_moves = [];
         this.is_human = true;
@@ -826,64 +927,64 @@ class Bot {
 //     request_new_game(game_data_json); // server side initiation process for a new game
 // }
 
-function request_new_game(lobby_id, game_data_json) {
-    console.log('i am request_new_game')
-    let game_data = JSON.parse(game_data_json)
+// function request_new_game(lobby_id, game_data_json) {
+//     console.log('i am request_new_game')
+//     let game_data = JSON.parse(game_data_json)
 
-    let new_game_id = 'g' + Math.floor(Math.random()*10**16); // TODO possibly temp - make into the room id of the lobby that created this game?
+//     let new_game_id = 'g' + Math.floor(Math.random()*10**16); // TODO possibly temp - make into the room id of the lobby that created this game?
     
 
-    // For each possible game setting, use the json input value, if present, and default to random/default values
-    let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
-    let n_cols = 'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);;;
-    let fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .5;
-    let n_bots = 'n_bots' in game_data ? game_data.n_bots : Math.floor(Math.random()*11) + 1;;
+//     // For each possible game setting, use the json input value, if present, and default to random/default values
+//     let n_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);;
+//     let n_cols = 'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);;;
+//     let fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .5;
+//     let n_bots = 'n_bots' in game_data ? game_data.n_bots : Math.floor(Math.random()*11) + 1;;
 
-    let water_weight = 'water_weight' in game_data ? game_data.water_weight : 10 + Math.random();
-    let mountain_weight = 'mountain_weight' in game_data ? game_data.mountain_weight : 1 + Math.random();
-    let swamp_weight  = 'swamp_weight' in game_data ? game_data.swamp_weight : .1 + Math.random() / 4 ; 
-    let ship_weight = 'ship_weight' in game_data ? game_data.ship_weight : .2 + Math.random() / 2;
+//     let water_weight = 'water_weight' in game_data ? game_data.water_weight : 10 + Math.random();
+//     let mountain_weight = 'mountain_weight' in game_data ? game_data.mountain_weight : 1 + Math.random();
+//     let swamp_weight  = 'swamp_weight' in game_data ? game_data.swamp_weight : .1 + Math.random() / 4 ; 
+//     let ship_weight = 'ship_weight' in game_data ? game_data.ship_weight : .2 + Math.random() / 2;
     
-    const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
-    const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
-                                'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
-                                'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
-                                'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
-                                'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
-                                'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
+//     const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
+//     const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
+//                                 'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
+//                                 'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
+//                                 'The Tempestuous Troubadour', 'The Irate Inventor', 'The Eccentric Explorer', 'Tempestuous King Triton', 'Mad Mariner', 
+//                                 'Wrathful Wave Rider', 'Vivid Voyager', 'Rhyming Rover', 'Bluemad Admiral Bee', 'The Scarlet Steersman', 'Jocular Jade Jack Tar', 
+//                                 'Captain Kindly', 'Captain Cruelty', 'Commodore Limpy']; 
 
     
-    // games.push(new Game(n_rows, n_cols, fog_of_war);)
-    let new_g = new Game(lobby_id, new_game_id, n_rows, n_cols, fog_of_war);
+//     // games.push(new Game(n_rows, n_cols, fog_of_war);)
+//     let new_g = new Game(lobby_id, new_game_id, n_rows, n_cols, fog_of_war);
     
-    let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
-    new_g.add_human('12345678', player_name, '#0a5a07');
+//     let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
+//     new_g.add_human('12345678', player_name, '#0a5a07');
 
-    for (let i = 0; i < n_bots; i++) {
-        let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
-        let bot_color = bot_color_options[bot_color_index];
-        bot_color_options.splice(bot_color_index, 1);
+//     for (let i = 0; i < n_bots; i++) {
+//         let bot_color_index = Math.floor(Math.random()*bot_color_options.length);
+//         let bot_color = bot_color_options[bot_color_index];
+//         bot_color_options.splice(bot_color_index, 1);
 
-        let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
-        let bot_name = bot_name_options[bot_name_index];
-        bot_name_options.splice(bot_name_index, 1);
+//         let bot_name_index = Math.floor(Math.random()*bot_name_options.length);
+//         let bot_name = bot_name_options[bot_name_index];
+//         bot_name_options.splice(bot_name_index, 1);
 
-        new_g.add_bot('bot personality', bot_name, bot_color);
-    };
+//         new_g.add_bot('bot personality', bot_name, bot_color);
+//     };
 
-    new_g.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
-    new_g.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
+//     new_g.spawn_admirals(25); // create an admiral entity for each player, param is the number of troops they start with
+//     new_g.spawn_terrain(water_weight, mountain_weight, swamp_weight, ship_weight);
     
-    new_g.status = GAME_STATUS_IN_PROGRESS;
-    new_g.game_on = true; // start with the simulation running instead of paused
+//     new_g.status = GAME_STATUS_IN_PROGRESS;
+//     new_g.game_on = true; // start with the simulation running instead of paused
 
-    // new_g.send_game_state_to(0, 'new_game_from_server');
-    games[new_game_id] = new_g; // add game to the list of active games
+//     // new_g.send_game_state_to(0, 'new_game_from_server');
+//     games[new_game_id] = new_g; // add game to the list of active games
 
-    console.log('i was request_new_game. new game id: ', new_game_id)
+//     console.log('i was request_new_game. new game id: ', new_game_id)
 
-    return new_game_id;
-}
+//     return new_game_id;
+// }
 
 
 
@@ -958,29 +1059,43 @@ function update_lobby_info() {
 
 }
 
-function game_state(room) {
-// Returns an object representing the current game state and other pertinent information about the current room
-//TODO THIS IS A PLACEHOLDER FROM SOCKET_DESIGN_SERVER - replace w/ appropriate data
+// function game_state(room) {
+// // Returns an object representing the current game state and other pertinent information about the current room
+// //TODO THIS IS A PLACEHOLDER FROM SOCKET_DESIGN_SERVER - replace w/ appropriate data
     
-    // for game in games { };
-    // if(room_id in games) {
+//     // for game in games { };
+//     // if(room_id in games) {
 
-
-    let data = {
-        'room_id': room.room_id,
-        players: [],
-        'game_mode': 'Free For All',
-        'game_status': 'In Progress',
-        'game_turn': 1,
-
-    };
-    return data;
+//     let data = {}
+//     data['room_id'] = room.room_id;
+//     if (room.game) {
+//         data['game_tick_server'] = room.game.game_tick_server;
+        
+//     }
     
-}
+
+
+//     // let data = {
+//     //     'room_id': room.room_id,
+//     //     players: [],
+//     //     'game_mode': 'Free For All',
+//     //     'game_status': 'In Progress',
+//     //     'game_turn': 1,
+
+//     // };
+//     return data;
+    
+// }
+
+
+
+
+
 
 const express = require('express');
 const app = express();
 const http = require('http');
+const { emit } = require("process");
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
@@ -1061,15 +1176,17 @@ io.on('connection', (socket) => {
         if(debug_mode){console.log('toggle_ready - room', room_id)}
     });
 
-    socket.on('start_game', function(room_id){ // host clicked Start Game
+    socket.on('start_game', function(room_id, game_data_json){ // host clicked Start Game
         if(debug_mode){console.log('start_game', room_id)}
         
-        //TODO here start the game
-        //function request_new_game(lobby_id, game_data_json) {
-        let game_id = request_new_game(room_id, '{}');
-        games.push(game_id);
+        let game = start_new_game(room_id, game_data_json);
 
-        io.to(room_id).emit('tell_client_game_has_started')
+        // //function request_new_game(lobby_id, game_data_json) {
+        // let game_id = request_new_game(room_id, '{}');
+        // games.push(game_id);
+        game.send_game_state_to_players('new_game_from_server')
+
+        // io.to(room_id).emit('tell_client_game_has_started', game_info)
     });
 
     socket.on('add_move_to_queue', function(){ //
@@ -1085,8 +1202,46 @@ io.on('connection', (socket) => {
     ////FROM mad_server:
 
     socket.on('queue_new_move', (game_id, new_move) => {
-        //console.log('queue_new_move', new_move);
-        games[game_id].players[new_move.queuer].queued_moves.push(new_move);
+        console.log('queue_new_move', new_move, game_id);
+
+        
+        //we know the game id but not the room id.. how to get the room id? loop through rooms and find the one with the matching game id
+        let room_i = null;
+        for (let i = 0; i < rooms.length; i++) {
+            if (rooms[i].game) {
+                if (rooms[i].game.game_id == game_id) {
+                    room_i = i;
+                }
+            }
+        }
+        if (room_i != null) {
+            console.log('FOUND A MATCHING ROOM')
+
+            //don't have the accurate queuer - currently it's set to 0 in new_move.queuer
+
+            for (let i = 0; i < rooms[room_i].game.players.length; i++) {
+                if(rooms[room_i].game.players[i].is_human) {
+                    if (rooms[room_i].game.players[i].socket_id == socket.id) {
+                        new_move.queuer = i;
+                    }
+                }
+            }
+
+            rooms[room_i].game.players[new_move.queuer].queued_moves.push(new_move);
+        }
+        
+        // let room_id = null;
+        // rooms.forEach(room => {
+        //     if (room.game) {
+        //         if (room.game.game_id == game_id) {
+        //             room_id = room.room_id;
+        //         }
+        //     }
+        // });
+
+        
+
+        // games[game_id].players[new_move.queuer].queued_moves.push(new_move);
     } );
 
     socket.on('undo_queued_move', (game_id, player_id, popped_item_id) => {
@@ -1105,34 +1260,34 @@ io.on('connection', (socket) => {
     
     //io.to("some room").emit("some event");
 
-    socket.on('request_new_game', (game_data_json) => {// this needs to come from a room instead of a socket I think?
-        console.log('request_new_game')
-        // console.log(game_data_json)
-        let lobby_id = -123; //TODO
-        let new_game_id = request_new_game(lobby_id, game_data_json);
+    // socket.on('request_new_game', (game_data_json) => {// this needs to come from a room instead of a socket I think?
+    //     console.log('request_new_game')
+    //     // console.log(game_data_json)
+    //     let lobby_id = -123; //TODO
+    //     let new_game_id = request_new_game(lobby_id, game_data_json);
         
-        socket.join(new_game_id);
-        games[new_game_id].send_game_state_to(0, 'new_game_from_server');
+    //     socket.join(new_game_id);
+    //     games[new_game_id].send_game_state_to(0, 'new_game_from_server');
     
-    } );
+    // } );
 
-    socket.on('toggle_pause_server', (game_id, toggle, override) => {
-        if (game_id) {
-            if (toggle) {
-                console.log('Toggling pause to', games[game_id].game_on, 'game:', game_id)
-                games[game_id].game_on = ! games[game_id].game_on
-            }
-            else {
-                console.log('Setting pause to', ! override, 'game:', game_id)
-                if (games[game_id]) {
-                    games[game_id].game_on = override
-                }
-            }    
+    // socket.on('toggle_pause_server', (game_id, toggle, override) => {
+    //     if (game_id) {
+    //         if (toggle) {
+    //             console.log('Toggling pause to', games[game_id].game_on, 'game:', game_id)
+    //             games[game_id].game_on = ! games[game_id].game_on
+    //         }
+    //         else {
+    //             console.log('Setting pause to', ! override, 'game:', game_id)
+    //             if (games[game_id]) {
+    //                 games[game_id].game_on = override
+    //             }
+    //         }    
         
-            io.emit('toggle_pause_received', games[game_id].game_on);
-        };
+    //         io.emit('toggle_pause_received', games[game_id].game_on);
+    //     };
 
-    });
+    // });
 
     socket.on('disconnect', () => {
         console.log(`user ${socket.id} disconnected`);
@@ -1172,7 +1327,17 @@ server.listen(port, () => {
 
             //if game is on: 
             // console.log('Emitting to room ' + room_id)
-            io.to(room.room_id).emit('tick', game_state(room))
+            // io.to(room.room_id).emit('tick', game_state(room))
+            if (room.game) {
+                room.game.tick();
+                for (let i = 0; i < room.game.players.length; i++) {
+                    if (room.game.players[i].is_human) {
+                        room.game.send_game_state_to(i, 'client_receives_game_state');
+                    };
+                    // io.to(room.players[i].socket_id).emit('tick', room.game.game_state(i));
+                };
+            };
+
         });
         ////END FROM socket_design
 

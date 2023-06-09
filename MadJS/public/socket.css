@@ -72,6 +72,20 @@
     padding: 20;
 }
 
+#mad-scoreboard-div {
+    outline: thick solid #4400BB;
+    position: fixed;
+    display: block;
+    top: 0;
+    right: 0;
+    margin: 10;
+    padding: 20;
+}
+
+#turn-counter-scoreboard {
+    display: block;
+    font-size: 20px;
+}
 
 .flex-container {
   display: flex;

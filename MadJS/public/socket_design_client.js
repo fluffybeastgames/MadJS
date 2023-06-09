@@ -7,7 +7,11 @@ let active_room_id = '-1';
 let active_game_id = '-2';
 let last_clicked_lobby_room_id = -1;
 
+let game_data; // info that persists for one game
+let game_state_data; // info that persists for one turn
+
 let socket_local = io();
+
 
 socket_local.on('mad_log', function(msg) {
     console.log('From server: ' + msg);
@@ -96,17 +100,99 @@ socket_local.on('lobby_info', function(list_rooms, players_in_lobby, players_onl
 
 })
 
-socket_local.on('tell_client_game_has_started', function(game_id) {
-    active_game_id = game_id;
-    // json_test = []
-    // mad_client.new_game_client(); //LEFT HERE 6/5
-
+socket_local.on('new_game_from_server', function(game_data_string) {
+    new_game_client(game_data_string); //LEFT HERE 6/5
     switch_to_game_gui();
 
+})
+
+socket_local.on('client_receives_game_state', function(game_state_string){
+    // console.log('WOOOOOOOO');
+    // console.log(game_state_string);
+    client_receives_game_state_here(game_state_string);
+});
+
+
+function client_receives_game_state_here(game_state_string) {
+    // console.log(game_state_string)
+    game_state_data = JSON.parse(game_state_string);
+    // console.log(game_state_data)
+
+    if (cells_client.length > 0) {    
+        //console.log('Attempting a new way of rendering')
+        
+        game_tick_local = game_state_data.game.turn // update the turn count
+        // Update the board to contain only info the player should currently be able to see
+        cells_client.forEach(cell => {
+            cell.owner = null;
+            cell.troops = 0;
+            cell.entity = null;
+            cell.terrain = null;
+            cell.visible = false;
+        });
+                
+        game_state_data.board.forEach(new_cell => {
+            if('owner' in new_cell) { cells_client[new_cell.id].owner = new_cell.owner };
+            if('troops' in new_cell) { cells_client[new_cell.id].troops = new_cell.troops };
+            if('entity' in new_cell) { cells_client[new_cell.id].entity = new_cell.entity };
+            if('terrain' in new_cell) { cells_client[new_cell.id].terrain = new_cell.terrain };
+            if('visible' in new_cell) { cells_client[new_cell.id].visible = new_cell.visible };
+        });
+
+        let scoreboard_data = game_state_data.scoreboard;
+        scoreboard_data.sort((a, b) => (a.troops > b.troops) ? -1 : 1); //sort by troops, descending
+        
+        const table_body = scoreboard_data.map(value => {
+            let bg_color = value.admirals == 0 ? CellClient.neutral_entity_color : value.color; // remove the player's fleet color from the scoreboard if they're out of the game
+            return (
+                `<tr bgcolor="${bg_color}">
+                <td style="color:#FFFFFF;text-align:center">${value.display_name}</td>
+                <td style="color:#FFFFFF;text-align:center">${value.admirals}</td>
+                <td style="color:#FFFFFF;text-align:center">${value.ships}</td>
+                <td style="color:#FFFFFF;text-align:center">${value.troops}</td>
+                </tr>`
+            );
+        }).join('');
+        document.getElementById('scoreboard_body').innerHTML = table_body;
+    
+    } else {console.log('Not ready yet!')}
 
     
+    // Update the local move queue - if one or more moves has been removed by the server, remove them from the front of the local queue
+    let new_min_queue_id = game_state_data.game.next_queue_id
 
-})
+    if (new_min_queue_id == '-1') {
+        //console.log('got here')
+        local_move_queue.length = 0;
+    } else {
+        let not_caught_up = true;
+        while (local_move_queue.length>0 && not_caught_up) {
+            if (local_move_queue[0].id < new_min_queue_id) {
+                local_move_queue.shift();
+            } else { not_caught_up = false; } //escape 
+        };
+    }
+
+
+    render_board(); // display the updated board
+    
+}
+
+
+function new_game_client(game_data_string) {
+    game_data = JSON.parse(game_data_string); //set global variable 
+    console.log('new game_data ')
+    console.log(game_data)
+    active_game_id = game_data.game.game_id;
+    //call this after a new game has been created at the server level
+    let canvas = document.getElementById('canvas');
+    canvas.height = CellClient.height*game_data.game.n_rows // canvas width must match cols*col_size
+    canvas.width = CellClient.width*game_data.game.n_cols // canvas width must match cols*col_size
+    create_client_cells(game_data.game.n_rows, game_data.game.n_cols); // Create an array of Cells objects, each representing one cell in the simulation
+    move_mode = ACTION_MOVE_NORMAL;
+    render_board(); // display the starting conditions for the sim
+}
+
 
 
 function switch_to_waiting_room_gui() {
@@ -114,6 +200,7 @@ function switch_to_waiting_room_gui() {
     document.getElementById('mad-waiting-room-div').style.display = 'block';
     document.getElementById('mad-game-div').style.display = 'none';
     document.getElementById('mad-news-div').style.display = 'block';
+    document.getElementById('mad-scoreboard-div').style.display = 'none';
     reset_chat_log();
 }
 
@@ -122,6 +209,7 @@ function switch_to_lobby_gui() {
     document.getElementById('mad-waiting-room-div').style.display = 'none';
     document.getElementById('mad-game-div').style.display = 'none';
     document.getElementById('mad-news-div').style.display = 'block';
+    document.getElementById('mad-scoreboard-div').style.display = 'none';
     reset_chat_log();
     active_room_id = 'lobby';
 }
@@ -131,6 +219,8 @@ function switch_to_game_gui() {
     document.getElementById('mad-waiting-room-div').style.display = 'none';
     document.getElementById('mad-game-div').style.display = 'block';
     document.getElementById('mad-news-div').style.display = 'none';
+    document.getElementById('mad-scoreboard-div').style.display = 'block';
+
     reset_chat_log();
 }
 
@@ -270,7 +360,8 @@ function populate_gui() {
         let btn_start_game = document.createElement('button');
         btn_start_game.innerText = 'Start Game';
         btn_start_game.addEventListener('click', function(){
-            socket_local.emit('start_game', active_room_id)
+            let game_data_json = get_new_game_settings();
+            socket_local.emit('start_game', active_room_id, game_data_json)
         });
                 
         let btn_leave_room = document.createElement('button');
@@ -286,6 +377,23 @@ function populate_gui() {
         div.appendChild(btn_leave_room);
         
         return div;
+    }
+    function get_new_game_settings() {
+        let game_data = {
+            n_rows: 10,
+            n_cols: 15
+            // n_rows: document.getElementById('rows_range').value,
+            // n_cols: document.getElementById('cols_range').value,
+            // n_bots: document.getElementById('bots_range').value,
+            // fog_of_war: document.getElementById('radio_fog_on').checked,
+            // player_name: document.getElementById('input_name').value,
+            // water_weight:100, // MAGIC NUMBER
+            // mountain_weight:Number(document.getElementById('mountains_range').value),
+            // ship_weight:Number(document.getElementById('ships_range').value),
+            // swamp_weight:Number(document.getElementById('swamps_range').value)
+        };
+        
+        return JSON.stringify(game_data)
     }
 
     function get_chat_div() {
@@ -325,6 +433,41 @@ function populate_gui() {
         return div;
     }
 
+    function get_scoreboard_div() {
+        let div = document.createElement('div');
+        div.id = 'mad-scoreboard-div';
+
+        // turn_counter_scoreboard
+        let div_turn_counter = document.createElement('div');
+        div_turn_counter.id = 'turn-counter-scoreboard';
+        div_turn_counter.innerHTML = 'Turn: 0';
+        div.appendChild(div_turn_counter);
+
+        let tbl = document.createElement('table')
+        div.appendChild(tbl);
+        let tbl_tr =  document.createElement('tr');
+
+        // tbl_lobby.id = 'table-lobby';
+        // div.appendChild(tbl_lobby)
+        
+        // // Create table header row
+        // let tbl_tr = document.createElement('tr');
+        let keys = ['Fleet', 'Admirals', 'Ships', 'Sailors']
+        for (let key of keys) {
+            let tbl_th = document.createElement('th');
+            tbl_th.textContent = key;
+            tbl_tr.appendChild(tbl_th);
+        }
+        tbl.appendChild(tbl_tr);
+
+        let tbl_body = document.createElement('tbody');
+        tbl_body.id = 'scoreboard_body';
+        tbl.appendChild(tbl_body);
+
+        return div;
+
+    }
+
     function get_game_div() {
         let div = document.createElement('div');
         div.id = 'mad-game-div';
@@ -340,7 +483,7 @@ function populate_gui() {
         canvas.style.position = 'absolute'; 
         canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
         
-        let context = canvas.getContext('2d');
+        // let context = canvas.getContext('2d');
     
         canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
         canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
@@ -363,13 +506,14 @@ function populate_gui() {
         return div;
     }
     
+    
     let parent_div = document.getElementById('mad_div');
 
     let lobby_div = get_lobby_div(); //the global lobby
     let news_div = get_news_div(); // the news feed
     let room_div = get_waiting_room_div(); // the waiting room between games
     let game_canvas_div = get_game_div(); // the game board itself
-    let game_scoreboard = document.createElement('div'); // the scoreboard
+    let game_scoreboard = get_scoreboard_div();//document.createElement('div'); // the scoreboard
     let chat_div = get_chat_div();
     let footer_div = document.createElement('div');
     
