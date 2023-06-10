@@ -479,9 +479,9 @@ function populate_gui() {
         
         canvas.width = 100;
         canvas.height = 100;
-        canvas.style.border = '1px solid lightgrey';
+        canvas.style.border = '10px solid green';
         canvas.style.position = 'absolute'; 
-        canvas.style.zIndex = "-1"; // set to a low z index to make overlapping elements cover the canvas
+        // canvas.style.zIndex = "2" //temp -- //"-1"; // set to a low z index to make overlapping elements cover the canvas
         
         // let context = canvas.getContext('2d');
     
@@ -492,7 +492,7 @@ function populate_gui() {
         
         // Add event listener on keydown
         document.addEventListener('keydown', (event) => {
-            if (document.activeElement.id == 'input_chat') { //don't handle key presses if the user is typing in the chat boxq
+            if (document.activeElement.id == 'input_chat') { //don't handle key presses if the user is typing in the chat box
                 
             } else {
                 //if (VALID_KEY_PRESSES.includes(event.key) && !new_game_overlay_visible) {

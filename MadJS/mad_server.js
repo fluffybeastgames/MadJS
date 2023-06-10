@@ -83,7 +83,7 @@ class Game {
         this.game_on = false; // when game_on, the game will loop every ~tick_speed ms, increasing the game_tick and advancing the simulation
         
         // For each possible game setting, use the json input value, if present, and default to random/default values
-        this.fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .5;
+        this.fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .9;
         this.num_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);
         this.num_cols =  'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);
         this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
@@ -142,7 +142,17 @@ class Game {
     add_humans(player_socket_ids) {
         let i = 0;
         player_socket_ids.forEach(socket_id => {
-            this.add_human(socket_id, 'Player ' + i, '#0a5a07');
+            let human_colors = [
+                '#0a5a07',
+                '#C50F1F',
+                '#C19C00',
+                '#881798',
+                '#E74856',
+                '#16C60C',
+                '#F9A1A5',
+                '#B4009E'
+            ]
+            this.add_human(socket_id, 'Player ' + i, human_colors[i]);
             i++;
         });
     }
@@ -605,9 +615,11 @@ class Game {
 
         if (remaining_humans_count == 0) {
             this.game_on = false;
+            this.status = GAME_STATUS_GAME_OVER_LOSE;
             console.log('Game over! Humans lose.'); // TODO pass this info on to the client
         } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
             this.game_on = false;
+            this.status = GAME_STATUS_GAME_OVER_WIN;
             console.log(`Game over! Player wins!!!`); // TODO pass this info on to the client
         };
     }
@@ -1245,7 +1257,7 @@ io.on('connection', (socket) => {
     } );
 
     socket.on('undo_queued_move', (game_id, player_id, popped_item_id) => {
-        // Remove all moves with an ID of or newer than popped_item_id (the or newer is an perhaps premature attempt at handling the possibly out of sync queuing of moves)
+        // Remove all moves with an ID of or newer than popped_item_id
         let not_caught_up = true;
         while (games[game_id].players[player_id].queued_moves.length>0 && not_caught_up) {
             if (games[game_id].players[player_id].queued_moves[games[game_id].players[player_id].queued_moves.length - 1].id >= popped_item_id) {
@@ -1291,6 +1303,10 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log(`user ${socket.id} disconnected`);
+        // if the user was in a game, remove them from the game broadcasts
+        // if there are no more users in the broadcast, end the game
+
+
     });
 } );
 
@@ -1329,7 +1345,11 @@ server.listen(port, () => {
             // console.log('Emitting to room ' + room_id)
             // io.to(room.room_id).emit('tick', game_state(room))
             if (room.game) {
-                room.game.tick();
+                if (room.game.status == GAME_STATUS_IN_PROGRESS) {
+                    room.game.check_for_game_over();
+                    room.game.tick();
+                };
+
                 for (let i = 0; i < room.game.players.length; i++) {
                     if (room.game.players[i].is_human) {
                         room.game.send_game_state_to(i, 'client_receives_game_state');

@@ -46,7 +46,7 @@ const MIN_DISTANCE_ADMIRALS = 5;
 
 let client_socket;
 
-let canvas, context; // the canvas and context we will draw the game cells on
+// let canvas, context; // the canvas and context we will draw the game cells on
 let cells_client = []; // This is the array of cell objects as understood by the client. Currently is only used for rendering.
 let game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
@@ -604,15 +604,29 @@ function render_board() {
         cells_client[i].draw_cell();
     }
 
-    //Add the highlights around the active cell (if present)
-    highlight_active_cell()
+    if (game_state_data) {
+        if(game_state_data.game.state==="true") {
+            //Add the highlights around the active cell (if present)
+            highlight_active_cell()
 
-    // Draw arrows over each square containig one or more queued moves
-    local_move_queue.forEach(move => {
-        let id;
-        id = move.row * game_data.game.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
-        cells_client[id].draw_arrow(move.dir, move.action);
-    }); 
+            // Draw arrows over each square containig one or more queued moves
+            local_move_queue.forEach(move => {
+                let id;
+                id = move.row * game_data.game.n_cols + move.col; // id 0 is the topleft most cells, and there num_cols cols per row        
+                cells_client[id].draw_arrow(move.dir, move.action);
+            }); 
+        } else {
+            context.fillStyle = '#FFFFFF';
+            context.fillRect(canvas.width/4, canvas.height/4, canvas.width/2, canvas.height/2);
+            context.fillStyle = '#000000';
+            context.font = `${font_size*2}px serif`;
+            context.textAlign = 'center';
+            context.fillText("Game Over!", canvas.width/2  , canvas.height/2);
+            context.font = `${font_size}px serif`;
+            context.fillText("Click anywhere to return to the lobby", canvas.width/2  , canvas.height/2 + font_size*3);
+            
+        }
+    }   
 
     // display the turn number
     if (game_tick_local) {
@@ -644,34 +658,46 @@ function highlight_active_cell() {
 }
 
 function canvas_mouse_handler(event) {
-    console.log(event)
+    // console.log('MOUSE DETECTED')
+    // console.log(event)
     event.preventDefault() // prevent default mouse behavior, mainly preventing middle click from activating scroll mode
-        
-    if (event.button == 0) { //left click
-        let mousePos = get_mouse_position(canvas, event);
-        let selection_changed = select_cell_at(mousePos.x, mousePos.y);
+    
 
-        if(selection_changed) {
-            move_mode = ACTION_MOVE_NORMAL;
-        } else { //cycle through the options by repeatedly clicking on the same cell, makes it easier for users without mice to play
-            switch (move_mode) {
-                case ACTION_MOVE_NORMAL: move_mode = ACTION_MOVE_HALF; break;
-                case ACTION_MOVE_HALF: move_mode = ACTION_MOVE_ALL; break;
-                case ACTION_MOVE_ALL: move_mode = ACTION_MOVE_NORMAL; break;
+    if (game_state_data) {
+        if(game_state_data.game.state==="true") { // if game is on
+                
+            if (event.button == 0) { //left click
+                let mousePos = get_mouse_position(canvas, event);
+                let selection_changed = select_cell_at(mousePos.x, mousePos.y);
+
+                if(selection_changed) {
+                    move_mode = ACTION_MOVE_NORMAL;
+                } else { //cycle through the options by repeatedly clicking on the same cell, makes it easier for users without mice to play
+                    switch (move_mode) {
+                        case ACTION_MOVE_NORMAL: move_mode = ACTION_MOVE_HALF; break;
+                        case ACTION_MOVE_HALF: move_mode = ACTION_MOVE_ALL; break;
+                        case ACTION_MOVE_ALL: move_mode = ACTION_MOVE_NORMAL; break;
+                    };
+                }
+                    
+
+            } else if (event.button == 1) { // middle click
+                let mousePos = get_mouse_position(canvas, event);
+                let selection_changed = select_cell_at(mousePos.x, mousePos.y);          
+                move_mode = ACTION_MOVE_ALL; 
+
+            } else if (event.button == 2) { // right click 
+                let mousePos = get_mouse_position(canvas, event);
+                let selection_changed = select_cell_at(mousePos.x, mousePos.y);         
+                move_mode = ACTION_MOVE_HALF; 
             };
+        } else { // if game is over, clicking anywhere will return to the lobby
+            console.log('game over, clicking anywhere will return to the lobby')
+            socket_local.emit('return_to_lobby');
+            switch_to_lobby_gui();
         }
-            
 
-    } else if (event.button == 1) { // middle click
-        let mousePos = get_mouse_position(canvas, event);
-        let selection_changed = select_cell_at(mousePos.x, mousePos.y);          
-        move_mode = ACTION_MOVE_ALL; 
-
-    } else if (event.button == 2) { // right click 
-        let mousePos = get_mouse_position(canvas, event);
-        let selection_changed = select_cell_at(mousePos.x, mousePos.y);         
-        move_mode = ACTION_MOVE_HALF; 
-    };
+    }
 }
 
 // Zoom in or out when the scrollwheel is used. Scale cells and inner text at the same rate
@@ -691,6 +717,7 @@ function wheel_handler(event) {
 
         // canvas.height = CellClient.height*num_rows // canvas width must match cols*col_size
     // canvas.width = CellClient.width*num_cols // canvas width must match cols*col_size
+    let canvas = document.getElementById('canvas');
     canvas.width = CellClient.width*game_data.game.n_cols;
     canvas.height = CellClient.height*game_data.game.n_rows;
 
@@ -771,13 +798,13 @@ function undo_queued_move() { //undo last queued move and return active cell to 
 
 function add_to_queue(source_row, source_col, target_row, target_col, dir) {
     local_queued_move_counter ++;
-    let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':0,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
-    //to do queuer: 0 assumes player is always player 0
+    let new_move = {'id':local_queued_move_counter, 'row':active_cell[0], 'col':active_cell[1], 'dir':dir, 'queuer':-1,'target_row':target_row, 'target_col':target_col, 'action':move_mode}
+    //to do queuer is being set downstream instead of here, as user doesn't need to know their uid?
     
     socket_local.emit('queue_new_move', game_data.game.game_id, new_move) //, local_player_id, new_move)
 
-    local_move_queue.push(new_move) //TODO owner = 0 is a stand-in for the user, for now
-    // console.log(new_move)
+    local_move_queue.push(new_move)
+    
     if (move_mode == ACTION_MOVE_HALF) {move_mode = ACTION_MOVE_NORMAL} // if we had right clicked to move half and half applied the half move in the above step, then we want to revert to normal movement mode
 
     // Update the active/highlighted cell to match the new target
