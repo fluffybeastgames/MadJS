@@ -347,6 +347,67 @@ function populate_gui() {
         let div = document.createElement('div');
         div.id = 'mad-waiting-room-div'
 
+
+        let overlay_inner = document.createElement('div');
+        overlay_inner.id = 'mad-game-settings-inner';
+        div.appendChild(overlay_inner)
+        
+        let input_name = document.createElement('input');
+        input_name.id = 'input_name';
+        input_name.type = 'text';
+        input_name.value='Player One';
+        
+        let lbl_input = document.createElement('label');
+        lbl_input.id = 'lbl_input_name';
+        lbl_input.htmlFor = 'input_name';
+        lbl_input.innerHTML='Name';
+    
+        overlay_inner.appendChild(lbl_input);
+        overlay_inner.appendChild(input_name);
+    
+        add_slider(overlay_inner, 'bots', 'Bots', 1, 10, 1, Math.floor(Math.random() * 4) + 1);
+        add_slider(overlay_inner, 'rows', 'Rows', 10, 30, 1, Math.floor(Math.random() * 10) + 10);
+        add_slider(overlay_inner, 'cols', 'Cols', 10, 45, 1, Math.floor(Math.random() * 15) + 15);
+        add_slider(overlay_inner, 'mountains', 'Mountain Spawn Rate', 1, 100, 1, 15);
+        add_slider(overlay_inner, 'ships', 'Ship Spawn Rate', 1, 100, 1, 5);
+        add_slider(overlay_inner, 'swamps', 'Swamp Spawn rate', 1, 100, 1, 5);
+        
+        //document.getElementById('id').checked
+        let lbl_fow = document.createElement('label')
+        lbl_fow.innerHTML='Fog of War';
+    
+        let radio_fog_on = document.createElement('input');
+        radio_fog_on.id = 'radio_fog_on';
+        radio_fog_on.type = 'radio';
+        radio_fog_on.name='Fog of War';
+        radio_fog_on.value='On';
+        radio_fog_on.checked= true;
+        let lbl_fow_on = document.createElement('label')
+        lbl_fow_on.innerHTML='On';
+        
+        let radio_fog_off = document.createElement('input');
+        radio_fog_off.id = 'radio_fog_off';
+        radio_fog_off.type = 'radio';
+        radio_fog_off.name='Fog of War';
+        radio_fog_off.value='Off';
+        let lbl_fow_off = document.createElement('label')
+        lbl_fow_off.innerHTML='Off';
+        
+        overlay_inner.appendChild(lbl_fow);
+        overlay_inner.appendChild(document.createElement('br'));
+        overlay_inner.appendChild(radio_fog_on);
+        overlay_inner.appendChild(lbl_fow_on);
+        overlay_inner.appendChild(document.createElement('br'));
+        overlay_inner.appendChild(radio_fog_off);
+        overlay_inner.appendChild(lbl_fow_off);
+        overlay_inner.appendChild(document.createElement('br'));
+        
+        // let ok_button = document.createElement('button');
+        // ok_button.innerHTML = 'Create Game'
+        // ok_button.addEventListener('click', launch_new_game);
+        // overlay_inner.appendChild(ok_button);
+
+
         let waiting_room_id = document.createElement('div');
         waiting_room_id.id = 'waiting_room_id'
         waiting_room_id.innerHTML = 'Room:';
@@ -380,17 +441,15 @@ function populate_gui() {
     }
     function get_new_game_settings() {
         let game_data = {
-            n_rows: 10,
-            n_cols: 15
-            // n_rows: document.getElementById('rows_range').value,
-            // n_cols: document.getElementById('cols_range').value,
-            // n_bots: document.getElementById('bots_range').value,
-            // fog_of_war: document.getElementById('radio_fog_on').checked,
-            // player_name: document.getElementById('input_name').value,
-            // water_weight:100, // MAGIC NUMBER
-            // mountain_weight:Number(document.getElementById('mountains_range').value),
-            // ship_weight:Number(document.getElementById('ships_range').value),
-            // swamp_weight:Number(document.getElementById('swamps_range').value)
+            n_rows: document.getElementById('rows_range').value,
+            n_cols: document.getElementById('cols_range').value,
+            n_bots: document.getElementById('bots_range').value,
+            fog_of_war: document.getElementById('radio_fog_on').checked,
+            player_name: document.getElementById('input_name').value,
+            water_weight:100, // MAGIC NUMBER
+            mountain_weight:Number(document.getElementById('mountains_range').value),
+            ship_weight:Number(document.getElementById('ships_range').value),
+            swamp_weight:Number(document.getElementById('swamps_range').value)
         };
         
         return JSON.stringify(game_data)
@@ -488,6 +547,7 @@ function populate_gui() {
         canvas.addEventListener('mousedown', function (event) { canvas_mouse_handler(event) }, false); //our main click handler function
         canvas.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false); // prevent right clicks from bringing up the context menu
         canvas.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
+        document.body.addEventListener('wheel', function (event) { wheel_handler(event) },  {passive: true}); // zoom in/out with the scroll wheel
         drag_canvas_event_handler(canvas); // custom function to handle dragging the canvas while the mouse is down
         
         // Add event listener on keydown

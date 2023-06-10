@@ -51,7 +51,7 @@ let cells_client = []; // This is the array of cell objects as understood by the
 let game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
-const VALID_KEY_PRESSES = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
+const VALID_KEY_PRESSES = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', '-', '_', '+', '=', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
 const local_move_queue = [];
 let local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
 let move_mode; // values are defined in the ACTION_MOVE_ constants
@@ -706,9 +706,19 @@ function wheel_handler(event) {
     // event.preventDefault(); 
     
     if (event.deltaY > 0 && zoom_scale > MIN_SCALE) { // zoom out
-        zoom_scale --;
+        zoom(false);
     } else if (event.deltaY < 0 && zoom_scale < MAX_SCALE)  { //zoom in
-        zoom_scale ++;
+        zoom(true);
+    };
+}
+
+function zoom(bool_in) {
+    if(bool_in) {
+        if(zoom_scale < MAX_SCALE) {
+            zoom_scale ++;
+        };
+    } else if( zoom_scale > MIN_SCALE) {
+        zoom_scale --;
     };
 
     CellClient.height = Math.round(DEFAULT_CANVAS_HEIGHT*(zoom_scale/DEFAULT_ZOOM));
@@ -722,6 +732,10 @@ function wheel_handler(event) {
     canvas.height = CellClient.height*game_data.game.n_rows;
 
     render_board();
+}
+
+function zoom_out() {
+
 }
 
 //Get Mouse Position
@@ -749,7 +763,7 @@ function select_cell_at(x, y) { // returns true if the active cell changed, and 
 }
 
 function handle_key_press(key_key) {
-    console.log('handle key press', key_key, active_cell)
+    // console.log('handle key press', key_key, active_cell)
     //If they user has pressed a movement key, then try to move the active cell
     let target_row, target_col;
 
@@ -770,18 +784,20 @@ function handle_key_press(key_key) {
         target_col = active_cell[1] + 1
         add_to_queue(active_cell[0], active_cell[1], target_row, target_col, 'right')
     } else {
-        if (key_key == 'Q' || key_key == 'q' || key_key == '') { 
+        if (key_key == 'Q' || key_key == 'q') { 
             cancel_queue()
-            
         } else if (key_key == 'E' || key_key == 'e') {
             undo_queued_move(); //undo last queued move and return active cell to it
-            
-        }
+        } else if (key_key == '-' || key_key == '_') {
+            zoom(false) // zoom out
+        } else if (key_key == '+' || key_key == '=') {
+            zoom(true) // zoom in
+        }        
     };
 }
 
 function cancel_queue() { //undo all queued moves
-    client_socket.emit('cancel_move_queue', game_data.game.game_id, local_player_id);
+    socket_local.emit('cancel_move_queue', game_data.game.game_id,);
     local_move_queue.length = 0 // empty the queue list. Do not bother updating active cell location
     render_board();
 }
@@ -791,7 +807,7 @@ function undo_queued_move() { //undo last queued move and return active cell to 
         let popped = local_move_queue.pop();        
         active_cell[0] = popped.row;
         active_cell[1] = popped.col;
-        client_socket.emit('undo_queued_move', game_data.game.game_id, local_player_id, popped.id) //, local_player_id, new_move)
+        socket_local.emit('undo_queued_move', game_data.game.game_id, popped.id) //, local_player_id, new_move)
         render_board();
     }
 }

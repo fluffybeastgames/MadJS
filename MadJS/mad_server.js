@@ -83,7 +83,7 @@ class Game {
         this.game_on = false; // when game_on, the game will loop every ~tick_speed ms, increasing the game_tick and advancing the simulation
         
         // For each possible game setting, use the json input value, if present, and default to random/default values
-        this.fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .9;
+        this.fog_of_war = 'fog_of_war' in game_data? game_data.fog_of_war : Math.random() > .19;
         this.num_rows = 'n_rows' in game_data ? game_data.n_rows : 15 + Math.floor(Math.random()*15);
         this.num_cols =  'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);
         this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
@@ -500,7 +500,7 @@ class Game {
         // Then loop through and add info about each visible cell
         let fog_of_war_distance = 1; // if 2 or greater, the player can see 2 blocks away from them instead of just 1
         this.cells.forEach(cell => {
-            if (this.should_be_visible(cell, socket_id, fog_of_war_distance)) {
+            if (this.should_be_visible(cell, uid, fog_of_war_distance)) {
                 let cell_string = `{ "id":${cell.id}, "row":${cell.row}, "col":${cell.col}`;
                 if (cell.owner != null) {cell_string += `, "owner":${cell.owner}`}
                 if (cell.terrain != TERRAIN_TYPE_WATER) {cell_string += `, "terrain":${cell.terrain}`}
@@ -617,6 +617,7 @@ class Game {
             this.game_on = false;
             this.status = GAME_STATUS_GAME_OVER_LOSE;
             console.log('Game over! Humans lose.'); // TODO pass this info on to the client
+
         } else if (remaining_bots_count == 0 && remaining_humans_count == 1) {
             this.game_on = false;
             this.status = GAME_STATUS_GAME_OVER_WIN;
@@ -1214,7 +1215,7 @@ io.on('connection', (socket) => {
     ////FROM mad_server:
 
     socket.on('queue_new_move', (game_id, new_move) => {
-        console.log('queue_new_move', new_move, game_id);
+        // console.log('queue_new_move', new_move, game_id);
 
         
         //we know the game id but not the room id.. how to get the room id? loop through rooms and find the one with the matching game id
@@ -1227,10 +1228,10 @@ io.on('connection', (socket) => {
             }
         }
         if (room_i != null) {
-            console.log('FOUND A MATCHING ROOM')
+            // console.log('FOUND A MATCHING ROOM new')
 
             //don't have the accurate queuer - currently it's set to 0 in new_move.queuer
-
+            // so loop through the room and find the player with the matching socket id
             for (let i = 0; i < rooms[room_i].game.players.length; i++) {
                 if(rooms[room_i].game.players[i].is_human) {
                     if (rooms[room_i].game.players[i].socket_id == socket.id) {
@@ -1256,19 +1257,80 @@ io.on('connection', (socket) => {
         // games[game_id].players[new_move.queuer].queued_moves.push(new_move);
     } );
 
-    socket.on('undo_queued_move', (game_id, player_id, popped_item_id) => {
+    socket.on('undo_queued_move', (game_id, popped_item_id) => {
         // Remove all moves with an ID of or newer than popped_item_id
-        let not_caught_up = true;
-        while (games[game_id].players[player_id].queued_moves.length>0 && not_caught_up) {
-            if (games[game_id].players[player_id].queued_moves[games[game_id].players[player_id].queued_moves.length - 1].id >= popped_item_id) {
-                games[game_id].players[player_id].queued_moves.pop();
-            } else { not_caught_up = false; }; //escape 
+        console.log('undo_queued_move')
+
+        let room_i = null;
+        for (let i = 0; i < rooms.length; i++) { // loop through rooms and find the one with the matching game id
+            if (rooms[i].game) {
+                if (rooms[i].game.game_id == game_id) {
+                    room_i = i;
+                }
+            }
+        }
+        if (room_i != null) {
+            console.log('FOUND A MATCHING ROOM undo ')
+            
+            let player_id = -1;
+            // loop through the room and find the player with the matching socket id
+            for (let i = 0; i < rooms[room_i].game.players.length; i++) {
+                if(rooms[room_i].game.players[i].is_human) {
+                    if (rooms[room_i].game.players[i].socket_id == socket.id) {
+                        player_id = i;
+
+                        console.log('FOUND A MATCHING PLAYER')
+                                    
+                        let not_caught_up = true;
+                        while (rooms[room_i].game.players[player_id].queued_moves.length>0 && not_caught_up) {
+                            if (rooms[room_i].game.players[player_id].queued_moves[rooms[room_i].game.players[player_id].queued_moves.length - 1].id >= popped_item_id) {
+                                rooms[room_i].game.players[player_id].queued_moves.pop();
+                            } else { not_caught_up = false; }; //escape 
+                        };
+                    };
+                };
+            };
+            
+            
         };
     } );
 
-    socket.on('cancel_move_queue', (game_id, player_id) => {
-        games[game_id].players[player_id].queued_moves.length = 0;
+    socket.on('cancel_move_queue', (game_id) => {
+        // Remove all queued moves for the player
+        console.log('cancel_move_queue')
+
+        let room_i = null;
+        for (let i = 0; i < rooms.length; i++) { // loop through rooms and find the one with the matching game id
+            if (rooms[i].game) {
+                if (rooms[i].game.game_id == game_id) {
+                    room_i = i;
+                }
+            }
+        }
+        if (room_i != null) {
+            console.log('FOUND A MATCHING ROOM cancel ')
+            
+            let player_id = -1;
+            // loop through the room and find the player with the matching socket id
+            for (let i = 0; i < rooms[room_i].game.players.length; i++) {
+                if(rooms[room_i].game.players[i].is_human) {
+                    if (rooms[room_i].game.players[i].socket_id == socket.id) {
+                        player_id = i;
+
+                        console.log('FOUND A MATCHING PLAYER cancel')
+                        rooms[room_i].game.players[player_id].queued_moves.length = 0;
+                                    
+                    };
+                };
+            };
+            
+            
+        };
     } );
+
+    // socket.on('cancel_move_queue', (game_id) => {
+    //     games[game_id].players[player_id].queued_moves.length = 0;
+    // } );
     
     //io.to("some room").emit("some event");
 
@@ -1346,16 +1408,18 @@ server.listen(port, () => {
             // io.to(room.room_id).emit('tick', game_state(room))
             if (room.game) {
                 if (room.game.status == GAME_STATUS_IN_PROGRESS) {
-                    room.game.check_for_game_over();
                     room.game.tick();
+                    room.game.check_for_game_over();       
+
+                    for (let i = 0; i < room.game.players.length; i++) {
+                        if (room.game.players[i].is_human) {
+                            room.game.send_game_state_to(i, 'client_receives_game_state');
+                        };
+                        // io.to(room.players[i].socket_id).emit('tick', room.game.game_state(i));
+                    };                                 
                 };
 
-                for (let i = 0; i < room.game.players.length; i++) {
-                    if (room.game.players[i].is_human) {
-                        room.game.send_game_state_to(i, 'client_receives_game_state');
-                    };
-                    // io.to(room.players[i].socket_id).emit('tick', room.game.game_state(i));
-                };
+                
             };
 
         });
