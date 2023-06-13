@@ -88,17 +88,21 @@ class Game {
         this.num_cols =  'n_cols' in game_data? game_data.n_cols : 15 + Math.floor(Math.random()*25);
         this.cells = []; // will hold an array Cell objects. This will become the server-side all-knowing set of cells
         this.initialize_cells();
-        this.astar_board = new path_finder.ABoard(this.num_rows, this.num_cols, 0);
+        this.astar_board = new path_finder.ABoard(this.num_rows, this.num_cols, 0); // used for determining the shortest traversable distance between two cells
         this.astar = new path_finder.AStar(this.astar_board);
         this.game_tick_server = -1;
         this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
 
+        let player_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165',
+                                    '#FF0000', '#FF8000', '#FFFF00', '#00FF00', '#FF00FF', '#808080'];  
+        player_color_options = player_color_options.sort((a, b) => 0.5 - Math.random()); // loosely shuffled array of colors to assign to players
+
         let n_bots = 'n_bots' in game_data ? game_data.n_bots : Math.floor(Math.random()*4) + 1;;
-        this.add_bots(n_bots);
+        this.add_bots(n_bots, player_color_options.slice(0, n_bots));
 
         console.log('n_bots', n_bots);
 
-        this.add_humans(player_socket_ids);
+        this.add_humans(player_socket_ids, player_color_options.slice(n_bots));
         // let player_name = 'player_name' in game_data ? game_data.player_name : 'Player One';
         // this.add_human('12345678', player_name, '#0a5a07');
     
@@ -139,19 +143,9 @@ class Game {
     //     // this.astar.print_board([0,0], [1,1]);
     // }
 
-    add_humans(player_socket_ids) {
+    add_humans(player_socket_ids, human_colors) {
         let i = 0;
         player_socket_ids.forEach(socket_id => {
-            let human_colors = [
-                '#0a5a07',
-                '#C50F1F',
-                '#C19C00',
-                '#881798',
-                '#E74856',
-                '#16C60C',
-                '#F9A1A5',
-                '#B4009E'
-            ]
             this.add_human(socket_id, 'Player ' + i, human_colors[i]);
             i++;
         });
@@ -164,8 +158,8 @@ class Game {
         console.log('added human', socket_id, name, color)
     }
 
-    add_bots(n_bots) {            
-        const bot_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165'];
+    add_bots(n_bots, bot_color_options) {      
+
         const bot_name_options = [ 'Admiral Blunderdome', 'Admiral Clumso', 'Admiral Tripfoot', 'Admiral Klutz', 'Admiral Fumblebum', 'Captain Bumblebling', 
                                     'Admiral Fuming Bull', 'Commodore Rage', 'Commodore Clumsy', 'Seadog Scatterbrain', 'The Crazed Seadog', 'Admiral Irritable', 
                                     'Captain Crazy', 'The Mad Mariner', 'The Lunatic Lighthousekeeper', 'The Poetic Pirate', 'The Fiery Fisherman', 'The Irascible Islander', 
