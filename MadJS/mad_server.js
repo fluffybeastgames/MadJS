@@ -94,7 +94,7 @@ class Game {
         this.tick_speed = DEFAULT_TICK_SPEED; // ms to wait before rendering each new frame
 
         let player_color_options = ['#C50F1F', '#C19C00', '#881798', '#E74856', '#16C60C', '#F9A1A5', '#B4009E', '#61D6D6', '#2222F2', '#8C8C8C', '#B9B165',
-                                    '#FF0000', '#FF8000', '#FFFF00', '#00FF00', '#FF00FF', '#808080'];  
+                                    '#FF0000', '#FF8000', '#00FF00', '#FF00FF'];  
         player_color_options = player_color_options.sort((a, b) => 0.5 - Math.random()); // loosely shuffled array of colors to assign to players
 
         let n_bots = 'n_bots' in game_data ? game_data.n_bots : Math.floor(Math.random()*4) + 1;;
@@ -387,6 +387,10 @@ class Game {
     // console.log('attempt takeover - ', victim_id, culprit_id)
     let admirals_remaining = this.players[victim_id].admiral_count();
         if (admirals_remaining == 0) { //admiral captured!
+            
+            //broadcast it to the players
+            this.send_message_to_game_room(`${this.players[culprit_id].display_name} captured ${this.players[victim_id].display_name}`);
+
             this.cells.forEach(cell => {
                 if(cell.owner == victim_id) {
                     cell.owner = culprit_id;
@@ -459,6 +463,10 @@ class Game {
         });
     }
     
+    send_message_to_game_room(message) {
+        io.to(this.room_id).emit('receive_chat_message', message)
+    }
+
         
     //An attempt at predicting what the server to client communication will look like
     send_game_state_to_players(emit_code) {
@@ -1202,7 +1210,7 @@ io.on('connection', (socket) => {
 
     socket.on('send_chat_message', function(room_id, msg){ // user sent a chat message 
         if(debug_mode){console.log('send_chat_message', room_id, msg)}
-        io.to(room_id).emit('receive_chat_message', socket.id, msg)
+        io.to(room_id).emit('receive_chat_message', socket.id + ': ' + msg)
     });
 
 

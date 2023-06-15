@@ -51,7 +51,7 @@ let cells_client = []; // This is the array of cell objects as understood by the
 let game_tick_local;
 let local_player_id = 0 // TODO temp syntax - don't want this hardcoded
 const active_cell = [0,0]; // will hold the row/col pair of currently selected coordinates, if any
-const VALID_KEY_PRESSES = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', '-', '_', '+', '=', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'] //, 37]
+const VALID_KEY_PRESSES = ['W', 'w', 'A', 'a', 'S', 's', 'D', 'd', 'E', 'e', 'Q', 'q', '-', '_', '+', '=', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Escape'] //, 37]
 const local_move_queue = [];
 let local_queued_move_counter = 0; // this gets incremented every time the users queues a move and serves as the move's unique identifier, both locally and on the server (each player has a separate queue)
 let move_mode; // values are defined in the ACTION_MOVE_ constants
@@ -792,7 +792,9 @@ function handle_key_press(key_key) {
             zoom(false) // zoom out
         } else if (key_key == '+' || key_key == '=') {
             zoom(true) // zoom in
-        }        
+        } else if (key_key == 'Escape') {
+            console.log('TODO - handle Escape key')
+        };
     };
 }
 

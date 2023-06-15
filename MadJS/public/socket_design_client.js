@@ -234,9 +234,9 @@ function send_chat_message(room, msg) {
     }
 }
 
-socket_local.on('receive_chat_message', function(sender_id, msg) {
-    console.log('receive_chat_message', sender_id, msg)
-    document.getElementById('socket_log').innerHTML = document.getElementById('socket_log').innerHTML + '<br>' + sender_id + ': ' + msg
+socket_local.on('receive_chat_message', function(msg) {
+    //console.log('receive_chat_message', sender_id, msg)
+    document.getElementById('socket_log').innerHTML = document.getElementById('socket_log').innerHTML + '<br>' + msg
 });
     
 
