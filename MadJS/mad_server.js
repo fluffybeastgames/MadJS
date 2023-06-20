@@ -1382,9 +1382,10 @@ io.of("/").adapter.on("join-room", (room, id) => {
 console.log(`socket ${id} has joined room ${room}`);
 });
 
-let port = 3000;
-server.listen(port, () => {
-    console.log(`Listening on *:${port}`);
+// let port = 3000;
+const PORT = process.env.PORT || 3000
+server.listen(PORT, () => {
+    console.log(`Listening on *:${PORT}`);
     let start_time = Date.now()    
     setInterval(function(){ 
     // This controls the game loop. Each active game advances one tick each time this interval passes
